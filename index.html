@@ -468,7 +468,7 @@
     display:flex;align-items:center;border-radius:2px;
   }
   .sheet-titlebar .avn-logo-box img{height:32px;width:auto;display:block;}
-  .sheet-titlebar h1{font-size:22px;font-weight:700;white-space:nowrap;}
+  .sheet-titlebar h1{font-size:22px;font-weight:700;white-space:nowrap;letter-spacing:normal;}
   .sheet-titlebar .qs-logo{height:34px;width:auto;flex:none;}
   .sheet-logos-row{
     background:#fff;
@@ -691,10 +691,10 @@
     padding:9px 16px;display:flex;align-items:center;font-size:16px;letter-spacing:.04em;border-radius:2px;
   }
   .exec-title{text-align:center;margin-bottom:22px;}
-  .exec-title h1{font-size:25px;font-weight:700;}
+  .exec-title h1{font-size:25px;font-weight:700;letter-spacing:normal;}
   .exec-title .sub{font-size:14px;color:var(--muted);margin-top:2px;}
 
-  .exec-intro{font-size:14.5px;line-height:1.65;margin-bottom:22px;color:#242424;}
+  .exec-intro{font-size:14.5px;line-height:1.65;margin-bottom:22px;color:#242424;text-align:justify;}
 
   .exec-section-title{
     font-family:'Barlow Condensed';font-size:19px;font-weight:700;
@@ -2072,11 +2072,19 @@
     var doc = new jsPDF("p", "pt", "a4");
     var pageW = doc.internal.pageSize.getWidth();
     var margin = 24;
-    return doc.html(sheetEl, {
-      margin: [margin, margin, margin, margin],
-      width: pageW - margin * 2,
-      windowWidth: sheetEl.scrollWidth,
-      html2canvas: { scale: 0.72, useCORS: true }
+    // Esperar a que las fuentes (Barlow Condensed / Inter) estén realmente
+    // cargadas antes de rasterizar: si html2canvas dibuja antes de tiempo,
+    // el texto en negrita puede salir con letras superpuestas o sin espacios.
+    var fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    return fontsReady.then(function(){
+      return doc.html(sheetEl, {
+        margin: [margin, margin, margin, margin],
+        width: pageW - margin * 2,
+        windowWidth: sheetEl.scrollWidth,
+        // Escala entera (no fraccionaria): un valor como 0.72 provoca
+        // redondeo de subpíxel que hace que el texto se vea amontonado.
+        html2canvas: { scale: 2, useCORS: true }
+      });
     }).then(function(){ return doc; });
   }
 
