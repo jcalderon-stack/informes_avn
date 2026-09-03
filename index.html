@@ -764,11 +764,16 @@
   }
 
   @media print{
-    .topbar,.stepper-wrap,.bottom-bar,.report-actions,.exec-actions{display:none !important;}
-    #view-report-scroll,#executive-sheet-wrap{background:#fff;padding:0;margin:0;}
-    .sheet{box-shadow:none;margin:0;max-width:100%;}
-    body,#app,main{background:#fff;}
-    * {-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    @page{ margin: 12mm; }
+    body *{ visibility:hidden !important; }
+    #report-sheet-wrap, #report-sheet-wrap *,
+    #executive-sheet-wrap, #executive-sheet-wrap * { visibility:visible !important; }
+    #report-sheet-wrap, #executive-sheet-wrap{
+      position:absolute; left:0; top:0; width:100%; background:#fff; padding:0; margin:0;
+    }
+    .sheet{ box-shadow:none; margin:0; max-width:100%; }
+    body,html{ background:#fff; }
+    * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   }
 </style>
 </head>
@@ -2068,32 +2073,58 @@
   }
 
   function buildPDF(sheetEl){
-    var jsPDF = window.jspdf.jsPDF;
-    var doc = new jsPDF("p", "pt", "a4");
-    var pageW = doc.internal.pageSize.getWidth();
+    var jsPDFCtor = window.jspdf.jsPDF;
     var margin = 24;
     // Ancho "de diseño" de la hoja (coincide con max-width:800px de .sheet en
     // el CSS). Si en vez de esto usamos el ancho real de pantalla, en un
     // celular (mucho más angosto) todo el contenido que no entra en esa
     // pantalla chica queda cortado al generar el PDF.
     var SHEET_DESIGN_WIDTH = 800;
-    // Esperar a que las fuentes (Barlow Condensed / Inter) estén realmente
-    // cargadas antes de rasterizar: si html2canvas dibuja antes de tiempo,
-    // el texto en negrita puede salir con letras superpuestas o sin espacios.
+    // Esperar a que las fuentes estén realmente cargadas antes de
+    // rasterizar: si html2canvas dibuja antes de tiempo, el texto en
+    // negrita puede salir con letras superpuestas o sin espacios.
     var fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+
+    // Capturamos la hoja como una imagen a resolución fija y después la
+    // vamos ubicando nosotros mismos en el PDF (con paginación manual si no
+    // entra en una sola hoja A4). El ajuste automático de jsPDF (doc.html)
+    // resultó poco confiable con este layout — este método es más lento
+    // pero mucho más predecible en cualquier dispositivo.
     return fontsReady.then(function(){
-      return doc.html(sheetEl, {
-        margin: [margin, margin, margin, margin],
-        width: pageW - margin * 2,
-        windowWidth: SHEET_DESIGN_WIDTH,
-        // jsPDF ya calcula el ajuste de tamaño internamente a partir de
-        // width/windowWidth. Cualquier "scale" distinto de 1 acá lo
-        // desajusta: valores menores dan texto borroso/amontonado y
-        // valores mayores hacen que el contenido se agrande y se corte
-        // en el borde de la página.
-        html2canvas: { scale: 1, useCORS: true, windowWidth: SHEET_DESIGN_WIDTH }
+      return html2canvas(sheetEl, {
+        scale: 2,
+        useCORS: true,
+        windowWidth: SHEET_DESIGN_WIDTH
       });
-    }).then(function(){ return doc; });
+    }).then(function(canvas){
+      var doc = new jsPDFCtor("p", "pt", "a4");
+      var pageW = doc.internal.pageSize.getWidth();
+      var pageH = doc.internal.pageSize.getHeight();
+      var usableW = pageW - margin * 2;
+      var usableH = pageH - margin * 2;
+      var imgData = canvas.toDataURL("image/jpeg", 0.92);
+      var imgW = usableW;
+      var imgH = (canvas.height * imgW) / canvas.width;
+
+      if(imgH <= usableH){
+        doc.addImage(imgData, "JPEG", margin, margin, imgW, imgH);
+      } else {
+        // La hoja no entra en una sola página: la vamos "deslizando" hacia
+        // arriba en cada página sucesiva, mostrando siempre el recorte que
+        // corresponde (mismo truco que usan las librerías html2pdf).
+        var heightLeft = imgH;
+        var offsetY = 0;
+        var first = true;
+        while(heightLeft > 0){
+          if(!first) doc.addPage();
+          doc.addImage(imgData, "JPEG", margin, margin - offsetY, imgW, imgH);
+          heightLeft -= usableH;
+          offsetY += usableH;
+          first = false;
+        }
+      }
+      return doc;
+    });
   }
 
   function uploadPdfToDrive(base64, filename){
