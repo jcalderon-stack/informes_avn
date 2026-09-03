@@ -1129,7 +1129,7 @@
   messagingSenderId: "532507421795",
   appId: "1:532507421795:web:095b0b74d25221bc255c56",
   measurementId: "G-ZQV90MX2CZ"
-  };
+};
   */
 
   var fbDb = null;
@@ -1187,10 +1187,17 @@
   // only keeps their download URLs, which is what keeps documents small and
   // reads/writes fast.
   function saveReport(r){
-    if(!dbAvailable()) return Promise.resolve(null);
+    if(!dbAvailable()){
+      return Promise.resolve({ ok: false, error: "Firebase no está configurado (FIREBASE_CONFIG vacío)." });
+    }
     return uploadAllPhotos(r).then(function(rWithUrls){
       return fbDb.collection("reports").doc(rWithUrls.id).set(rWithUrls);
-    }).catch(function(e){ console.error("save error", e); return null; });
+    }).then(function(){
+      return { ok: true };
+    }).catch(function(e){
+      console.error("save error", e);
+      return { ok: false, error: (e && e.message) ? e.message : String(e) };
+    });
   }
 
   function deleteReportStorage(id){
@@ -1205,14 +1212,21 @@
   }
 
   function listReports(){
-    if(!dbAvailable()) return Promise.resolve([]);
+    if(!dbAvailable()){
+      toast("Firebase no está configurado: no se pueden cargar los relevamientos.");
+      return Promise.resolve([]);
+    }
     return fbDb.collection("reports").get().then(function(snap){
       var arr = [];
       snap.forEach(function(doc){
         try { arr.push(migrateReport(doc.data())); } catch(e){}
       });
       return arr.sort(function(a, b){ return (b.createdAt || 0) - (a.createdAt || 0); });
-    }).catch(function(e){ console.error(e); return []; });
+    }).catch(function(e){
+      console.error(e);
+      toast("No se pudo leer Firestore: " + (e && e.message ? e.message : e));
+      return [];
+    });
   }
 
   function fetchReportById(id){
@@ -1270,9 +1284,15 @@
     if(dot){ dot.style.background = "#B9790B"; }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function(){
-      saveReport(state).then(function(){
-        if(statusText){ statusText.textContent = "Guardado"; }
-        if(dot){ dot.style.background = "#1E8E5A"; }
+      saveReport(state).then(function(res){
+        if(res && res.ok){
+          if(statusText){ statusText.textContent = "Guardado"; }
+          if(dot){ dot.style.background = "#1E8E5A"; }
+        } else {
+          if(statusText){ statusText.textContent = "Error al guardar"; }
+          if(dot){ dot.style.background = "#C6362E"; }
+          toast("No se guardó: " + (res && res.error ? res.error : "error desconocido"));
+        }
       });
     }, 500);
   }
@@ -2822,9 +2842,13 @@
   function startNew(){
     if(!canCreate()){ toast("No tenés permiso para crear relevamientos"); return; }
     state = newReport();
-    saveReport(state);
     switchView("form");
     renderForm();
+    saveReport(state).then(function(res){
+      if(!res || !res.ok){
+        toast("No se pudo guardar el relevamiento nuevo: " + (res && res.error ? res.error : "error desconocido"));
+      }
+    });
   }
 
   function openEditById(id){
@@ -2866,7 +2890,10 @@
     $("#btn-form-home").onclick = goHome;
     $("#btn-report-home").onclick = goHome;
     $("#btn-go-report").onclick = function(){
-      saveReport(state).then(function(){
+      saveReport(state).then(function(res){
+        if(!res || !res.ok){
+          toast("No se guardó antes de generar el informe: " + (res && res.error ? res.error : "error desconocido"));
+        }
         switchView("report");
         renderReport();
       });
