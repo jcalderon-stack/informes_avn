@@ -1119,21 +1119,32 @@
   // Sin esto, los relevamientos y la configuración no se guardan.
   // El PDF y el respaldo en Drive siguen usando el Backend de arriba.
   // ─────────────────────────────────────────────────────────────────
-  var FIREBASE_CONFIG = null;
-  /* Ejemplo:
   var FIREBASE_CONFIG = {
     apiKey: "AIzaSyAjYSmHPuHVh87_KYFasZ7aIec9bVEIEvw",
-  authDomain: "appanv-35c48.firebaseapp.com",
-  projectId: "appanv-35c48",
-  storageBucket: "appanv-35c48.firebasestorage.app",
-  messagingSenderId: "532507421795",
-  appId: "1:532507421795:web:095b0b74d25221bc255c56",
-  measurementId: "G-ZQV90MX2CZ"
-};
+    authDomain: "appanv-35c48.firebaseapp.com",
+    projectId: "appanv-35c48",
+    storageBucket: "appanv-35c48.firebasestorage.app",
+    messagingSenderId: "532507421795",
+    appId: "1:532507421795:web:095b0b74d25221bc255c56"
+  };
+  /* Ejemplo:
+  var FIREBASE_CONFIG = {
+    apiKey: "AIza...",
+    authDomain: "tu-proyecto.firebaseapp.com",
+    projectId: "tu-proyecto",
+    storageBucket: "tu-proyecto.appspot.com",
+    messagingSenderId: "123456789",
+    appId: "1:123456789:web:abcabc"
+  };
   */
 
   var fbDb = null;
   var fbStorage = null;
+
+  // Client ID de OAuth para "Iniciar sesión con Google" (Google Cloud Console
+  // → Credenciales). Se usa como valor por defecto: si más adelante lo
+  // cambiás desde Administración, ese valor guardado en Firestore manda.
+  var GOOGLE_CLIENT_ID_DEFAULT = "764945416892-domuhbhhrfkrrr8brep8ua62it48md1l.apps.googleusercontent.com";
 
   function initFirebase(){
     if(!FIREBASE_CONFIG || typeof firebase === "undefined") return;
@@ -2805,7 +2816,7 @@
     if(!dbAvailable()){
       allowedEmails = [];
       adminPasscode = "";
-      googleClientId = "";
+      googleClientId = GOOGLE_CLIENT_ID_DEFAULT || "";
       trackingSheetUrl = "";
       return Promise.resolve();
     }
@@ -2813,11 +2824,11 @@
       var cfg = doc.exists ? doc.data() : {};
       allowedEmails = normalizeAllowedEmails(cfg.allowedEmails || []);
       adminPasscode = cfg.adminPasscode || "";
-      googleClientId = cfg.googleClientId || "";
+      googleClientId = cfg.googleClientId || GOOGLE_CLIENT_ID_DEFAULT || "";
       trackingSheetUrl = cfg.trackingSheetUrl || "";
     }).catch(function(e){
       console.error("No se pudo cargar la configuración desde Firestore", e);
-      allowedEmails = []; adminPasscode = ""; googleClientId = ""; trackingSheetUrl = "";
+      allowedEmails = []; adminPasscode = ""; googleClientId = GOOGLE_CLIENT_ID_DEFAULT || ""; trackingSheetUrl = "";
     });
   }
 
