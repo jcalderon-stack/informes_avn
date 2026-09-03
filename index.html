@@ -680,6 +680,13 @@
   .exec-list-item .exec-rack-tag{font-weight:700;}
   .exec-empty-note{font-size:13px;color:var(--muted);font-style:italic;padding:6px 0;}
 
+  .exec-pie-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap;margin-bottom:16px;}
+  .exec-pie{width:150px;height:150px;border-radius:50%;flex:none;background:#EAEAEA;}
+  .exec-legend{flex:1;min-width:180px;}
+  .exec-legend-row{font-size:13px;margin-bottom:7px;display:flex;align-items:center;gap:8px;}
+  .exec-legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none;}
+  .exec-subhead{font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:16px 0 8px;}
+
   .exec-footer{
     margin-top:26px;padding-top:14px;border-top:1px solid var(--line);
     font-size:11.5px;color:var(--muted);line-height:1.6;
@@ -1844,6 +1851,12 @@
 
   function collectInconvenientes(reports){
     var list = [];
+    var sectionArea = {
+      exterior: "Exterior del gabinete",
+      interior: "Interior del gabinete",
+      termico: "Refrigeración y ventilación",
+      electrica: "Alimentación eléctrica"
+    };
     reports.forEach(function(r){
       ["exterior", "interior", "termico", "electrica"].forEach(function(s){
         var items = r[s] && r[s].items;
@@ -1851,7 +1864,7 @@
           Object.keys(items).forEach(function(k){
             var e = items[k].estado;
             if(e === "MAL" || e === "REGULAR"){
-              list.push({ rack: r.control.nombreRack || "Rack sin nombre", item: k, estado: e });
+              list.push({ rack: r.control.nombreRack || "Rack sin nombre", item: k, estado: e, area: sectionArea[s] });
             }
           });
         }
@@ -1863,13 +1876,75 @@
               rack: r.control.nombreRack || "Rack sin nombre",
               item: "Red de datos (" + (d.marcaModelo || ("dispositivo " + (i + 1))) + ")",
               estado: "MAL",
-              detail: d.warningDetalle || ""
+              detail: d.warningDetalle || "",
+              area: "Red de datos"
             });
           }
         });
       }
     });
     return list;
+  }
+
+  function collectRackStatusCounts(reports){
+    var counts = { BIEN: 0, REGULAR: 0, MAL: 0 };
+    reports.forEach(function(r){ counts[rackOverallStatus(r)]++; });
+    return counts;
+  }
+
+  function collectRacksByTecnico(reports){
+    var map = {};
+    reports.forEach(function(r){
+      var t = (r.responsable && r.responsable.nombre) || "Sin técnico asignado";
+      map[t] = (map[t] || 0) + 1;
+    });
+    return map;
+  }
+
+  function collectInconvenientesByArea(inconvenientes){
+    var map = {};
+    inconvenientes.forEach(function(inc){
+      var a = inc.area || "Otros";
+      map[a] = (map[a] || 0) + 1;
+    });
+    return map;
+  }
+
+  function renderCountBarChart(dataObj, colorForLabel){
+    var keys = Object.keys(dataObj);
+    if(!keys.length) return '<div class="exec-empty-note">Sin datos para graficar.</div>';
+    var max = Math.max.apply(null, keys.map(function(k){ return dataObj[k]; }).concat([1]));
+    return keys.map(function(k){
+      var val = dataObj[k];
+      var pct = Math.round((val / max) * 100);
+      var color = colorForLabel ? colorForLabel(k) : "var(--ink)";
+      return '<div class="exec-bar-row">'
+        + '<span class="exec-bar-label">'+esc(k)+'</span>'
+        + '<div class="exec-bar-track"><div class="exec-bar-fill" style="width:'+pct+'%;background:'+color+';"></div></div>'
+        + '<span class="exec-bar-value">'+val+'</span>'
+      + '</div>';
+    }).join("");
+  }
+
+  var PIE_PALETTE = ["#2B6CB0", "#7C3AED", "#0EA5A5", "#B9790B", "#C6362E", "#6B7280"];
+
+  function renderPieChart(dataObj){
+    var keys = Object.keys(dataObj);
+    if(!keys.length) return '<div class="exec-empty-note">No hay puntos de seguimiento para graficar.</div>';
+    var total = keys.reduce(function(sum, k){ return sum + dataObj[k]; }, 0);
+    var cum = 0;
+    var stops = [];
+    var legend = "";
+    keys.forEach(function(k, i){
+      var val = dataObj[k];
+      var pct = (val / total) * 100;
+      var color = PIE_PALETTE[i % PIE_PALETTE.length];
+      stops.push(color + " " + cum.toFixed(2) + "% " + (cum + pct).toFixed(2) + "%");
+      legend += '<div class="exec-legend-row"><span class="exec-legend-dot" style="background:'+color+';"></span>'+esc(k)+' — <b>'+val+'</b> ('+Math.round(pct)+'%)</div>';
+      cum += pct;
+    });
+    var gradient = "conic-gradient(" + stops.join(", ") + ")";
+    return '<div class="exec-pie-wrap"><div class="exec-pie" style="background:'+gradient+';"></div><div class="exec-legend">'+legend+'</div></div>';
   }
 
   function renderExecutiveSetup(){
@@ -1936,6 +2011,9 @@
     var totalItems = counts.BIEN + counts.REGULAR + counts.MAL;
     var mejoras = collectMejoras(reports);
     var inconvenientes = collectInconvenientes(reports);
+    var rackStatusCounts = collectRackStatusCounts(reports);
+    var racksByTecnico = collectRacksByTecnico(reports);
+    var inconvenientesPorArea = collectInconvenientesByArea(inconvenientes);
 
     var html = '<div class="sheet">';
 
@@ -1951,11 +2029,11 @@
     + '</div>';
 
     html += '<div class="exec-intro">'
-      + 'Este informe resume, en forma simple, el trabajo de mantenimiento realizado el <b>'+esc(fmtDateLong(dateStr))+'</b> '
-      + 'en los racks de comunicaciones del barrio, a cargo de PNC IT y Support QSS, con la supervisión de la Asociación Vecinal Nordelta (AVN). '
-      + 'Se revisaron <b>'+reports.length+'</b> '+(reports.length===1?"rack":"racks")+', con la participación de '
+      + 'Este informe técnico resume las tareas de mantenimiento e inspección realizadas el <b>'+esc(fmtDateLong(dateStr))+'</b> '
+      + 'sobre la infraestructura de racks de comunicaciones del barrio, a cargo de PNC IT y Support QSS, bajo la supervisión de la Asociación Vecinal Nordelta (AVN). '
+      + 'Se relevaron <b>'+reports.length+'</b> '+(reports.length===1?"gabinete de telecomunicaciones":"gabinetes de telecomunicaciones")+', evaluando parámetros de acondicionamiento térmico, alimentación eléctrica, cableado estructurado y equipamiento de networking, con la participación de '
       + (tecnicos.length ? esc(tecnicos.join(", ")) : "el equipo técnico")+'. '
-      + 'A continuación se detallan los hallazgos, las tareas realizadas y los puntos que requieren seguimiento.'
+      + 'A continuación se detallan los hallazgos técnicos, las tareas correctivas y preventivas ejecutadas, y los puntos que requieren seguimiento.'
     + '</div>';
 
     html += '<div class="exec-stats-grid">'
@@ -1979,6 +2057,23 @@
       html += '<div class="exec-empty-note">No hay puntos de revisión cargados todavía.</div>';
     }
 
+    html += '<div class="exec-section-title">Cantidad de racks por estado general</div>';
+    html += '<div class="exec-bar-row">'
+      + '<span class="exec-bar-label">'+ESTADO_PLAIN.BIEN+'</span>'
+      + '<div class="exec-bar-track"><div class="exec-bar-fill BIEN" style="width:'+Math.round((rackStatusCounts.BIEN / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
+      + '<span class="exec-bar-value">'+rackStatusCounts.BIEN+'</span>'
+    + '</div>'
+    + '<div class="exec-bar-row">'
+      + '<span class="exec-bar-label">'+ESTADO_PLAIN.REGULAR+'</span>'
+      + '<div class="exec-bar-track"><div class="exec-bar-fill REGULAR" style="width:'+Math.round((rackStatusCounts.REGULAR / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
+      + '<span class="exec-bar-value">'+rackStatusCounts.REGULAR+'</span>'
+    + '</div>'
+    + '<div class="exec-bar-row">'
+      + '<span class="exec-bar-label">'+ESTADO_PLAIN.MAL+'</span>'
+      + '<div class="exec-bar-track"><div class="exec-bar-fill MAL" style="width:'+Math.round((rackStatusCounts.MAL / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
+      + '<span class="exec-bar-value">'+rackStatusCounts.MAL+'</span>'
+    + '</div>';
+
     html += '<div class="exec-section-title">Mejoras y tareas realizadas</div>';
     if(mejoras.length){
       mejoras.forEach(function(m){
@@ -1989,7 +2084,9 @@
     }
 
     html += '<div class="exec-section-title">Puntos que requieren seguimiento</div>';
+    html += renderPieChart(inconvenientesPorArea);
     if(inconvenientes.length){
+      html += '<div class="exec-subhead">Detalle</div>';
       inconvenientes.forEach(function(inc){
         var extra = inc.detail ? (" — " + esc(inc.detail)) : "";
         html += '<div class="exec-list-item"><span class="exec-rack-tag">'+esc(inc.rack)+'</span> — '+esc(inc.item)+': <b>'+ESTADO_PLAIN[inc.estado]+'</b>'+extra+'</div>';
@@ -1997,6 +2094,9 @@
     } else {
       html += '<div class="exec-empty-note">No se encontraron inconvenientes en los racks revisados ese día. 🎉</div>';
     }
+
+    html += '<div class="exec-section-title">Racks revisados por técnico</div>';
+    html += renderCountBarChart(racksByTecnico, function(){ return "var(--ink)"; });
 
     html += '<div class="exec-section-title">Detalle por rack</div>';
     html += '<table class="rtable">'
@@ -2283,7 +2383,7 @@
       + '<div class="admin-section">'
         + '<h3>Google Sign-In</h3>'
         + '<div class="sub">Client ID de OAuth (Google Cloud Console) para habilitar "Iniciar sesión con Google" en la pantalla de acceso.</div>'
-        + '<div class="field"><input type="text" id="admin-client-id" value="'+esc(googleClientId)+'" placeholder="764945416892-domuhbhhrfkrrr8brep8ua62it48md1l.apps.googleusercontent.com"></div>'
+        + '<div class="field"><input type="text" id="admin-client-id" value="'+esc(googleClientId)+'" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>'
         + '<button class="btn btn-accent btn-sm" id="btn-save-client-id">Guardar Client ID</button>'
         + '<div id="admin-client-status" class="modal-status"></div>'
       + '</div>'
