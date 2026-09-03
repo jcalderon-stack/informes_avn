@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>Relevamiento de Racks</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -30,6 +30,7 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
+  input,select,textarea,button{font-size:16px;}
   body{
     background:var(--paper);
     color:var(--ink);
@@ -53,11 +54,13 @@
     display:flex;
     align-items:center;
     justify-content:space-between;
-    padding:14px 18px;
+    flex-wrap:wrap;
+    padding:12px 16px;
+    padding-top:calc(12px + env(safe-area-inset-top, 0px));
     position:sticky;
     top:0;
     z-index:40;
-    gap:12px;
+    gap:10px 12px;
   }
   .topbar-left{display:flex;align-items:center;gap:12px;min-width:0;}
   .logo{
@@ -71,29 +74,35 @@
   }
   .logo img{height:26px;width:auto;display:block;}
   .topbar-title{
-    font-size:20px;
+    font-size:19px;
     font-weight:700;
     white-space:nowrap;
     overflow:hidden;
     text-overflow:ellipsis;
+    max-width:52vw;
   }
   .topbar-sub{
     font-size:12px;
     color:#C9CBCE;
     font-family:'Inter',sans-serif;
     white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:52vw;
   }
-  .topbar-right{display:flex;align-items:center;gap:8px;flex:none;}
+  .topbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex:none;}
   .btn{
     border:1.5px solid transparent;
     border-radius:3px;
-    padding:9px 16px;
-    font-size:14px;
+    padding:11px 18px;
+    font-size:14.5px;
     font-weight:600;
     display:inline-flex;
     align-items:center;
+    justify-content:center;
     gap:6px;
     white-space:nowrap;
+    min-height:44px;
     transition:background .15s, color .15s, border-color .15s;
   }
   .btn-accent{background:var(--accent);color:#fff;}
@@ -106,7 +115,7 @@
   .btn-text:hover{color:var(--ink);}
   .btn-danger-outline{background:transparent;color:var(--bad);border-color:var(--bad);}
   .btn-danger-outline:hover{background:var(--bad-bg);}
-  .btn-sm{padding:6px 12px;font-size:13px;}
+  .btn-sm{padding:8px 14px;font-size:13.5px;min-height:38px;}
   .btn:disabled{opacity:.5;cursor:default;}
 
   main{flex:1;display:flex;flex-direction:column;}
@@ -191,7 +200,7 @@
   /* ---------- Stepper ---------- */
   .stepper-wrap{
     position:sticky;
-    top:57px;
+    top:var(--topbar-h, 57px);
     z-index:30;
     background:var(--paper);
     border-bottom:1px solid var(--line);
@@ -199,8 +208,9 @@
   }
   .stepper{
     display:flex;
-    gap:6px;
+    gap:8px;
     overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
     max-width:920px;
     margin:0 auto;
     scrollbar-width:none;
@@ -214,14 +224,15 @@
     background:var(--card);
     border:1.5px solid var(--line);
     border-radius:20px;
-    padding:7px 13px 7px 9px;
-    font-size:13px;
+    padding:9px 15px 9px 10px;
+    min-height:40px;
+    font-size:13.5px;
     font-weight:600;
     color:var(--muted);
     white-space:nowrap;
   }
   .step-chip .num{
-    width:19px;height:19px;border-radius:50%;
+    width:20px;height:20px;border-radius:50%;
     background:var(--line-soft);
     color:var(--muted);
     font-size:11px;
@@ -241,7 +252,7 @@
     border:1px solid var(--line);
     border-radius:4px;
     margin-bottom:18px;
-    scroll-margin-top:120px;
+    scroll-margin-top:var(--scroll-offset, 130px);
     overflow:hidden;
   }
   .section-head{
@@ -278,42 +289,45 @@
   .field textarea{
     border:1.5px solid var(--line);
     border-radius:3px;
-    padding:10px 11px;
-    font-size:15px;
+    padding:12px 12px;
+    font-size:16px;
     color:var(--ink);
     background:#fff;
     width:100%;
+    min-height:46px;
   }
   .field input:focus,.field select:focus,.field textarea:focus{
     outline:none;border-color:var(--ink);
   }
-  .field textarea{resize:vertical;min-height:70px;line-height:1.4;}
+  .field textarea{resize:vertical;min-height:80px;line-height:1.45;}
 
   .checklist{display:flex;flex-direction:column;}
   .check-row{
     display:flex;
     align-items:center;
     gap:10px;
-    padding:11px 0;
+    padding:12px 0;
     border-bottom:1px solid var(--line-soft);
     flex-wrap:wrap;
   }
   .check-row:last-child{border-bottom:none;}
-  .check-row-name{flex:1;min-width:150px;font-size:14.5px;font-weight:500;}
+  .check-row-name{flex:1;min-width:150px;font-size:15px;font-weight:500;}
   .check-row select{
     border:1.5px solid var(--line);
     border-radius:3px;
-    padding:8px 10px;
-    font-size:14px;
+    padding:10px 12px;
+    font-size:16px;
     background:#fff;
     min-width:140px;
+    min-height:44px;
   }
   .mini-input{
     border:1.5px solid var(--line);
     border-radius:3px;
-    padding:7px 9px;
-    font-size:14px;
-    width:76px;
+    padding:9px 10px;
+    font-size:16px;
+    width:84px;
+    min-height:44px;
   }
   .estado-dot{
     width:9px;height:9px;border-radius:50%;
@@ -324,10 +338,10 @@
   .estado-dot.REGULAR{background:var(--warn);}
   .estado-dot.MAL{background:var(--bad);}
   .mejora-check{
-    display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600;color:var(--muted);
-    cursor:pointer;flex:none;
+    display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:600;color:var(--muted);
+    cursor:pointer;flex:none;padding:6px 4px;min-height:40px;
   }
-  .mejora-check input[type=checkbox]{width:18px;height:18px;accent-color:var(--ink);cursor:pointer;}
+  .mejora-check input[type=checkbox]{width:22px;height:22px;accent-color:var(--ink);cursor:pointer;flex:none;}
   .mejora-check:has(input:checked){color:var(--ok);}
 
   .detalles-label{font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin:14px 0 5px;}
@@ -335,7 +349,7 @@
   /* photos */
   .photo-group{margin-bottom:8px;}
   .photo-group-title{font-size:15px;font-weight:700;font-family:'Barlow Condensed';margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}
-  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:10px;}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;margin-bottom:10px;}
   .photo-thumb{
     position:relative;
     border:1px solid var(--line);
@@ -350,9 +364,9 @@
     background:rgba(10,10,10,.75);
     color:#fff;
     border:none;
-    width:22px;height:22px;
+    width:30px;height:30px;
     border-radius:50%;
-    font-size:14px;
+    font-size:15px;
     line-height:1;
     display:flex;align-items:center;justify-content:center;
   }
@@ -366,13 +380,16 @@
   .net-device-head{
     display:flex;align-items:center;justify-content:space-between;
     margin-bottom:12px;
+    flex-wrap:wrap;
+    gap:8px;
   }
   .net-device-title{
     font-family:'Barlow Condensed';font-size:15px;font-weight:700;color:var(--muted);
   }
   .btn-remove-device{
     background:transparent;border:1.5px solid var(--bad);color:var(--bad);
-    border-radius:3px;padding:4px 10px;font-size:12px;font-weight:600;
+    border-radius:3px;padding:7px 12px;font-size:12.5px;font-weight:600;
+    min-height:36px;
   }
   .btn-remove-device:hover{background:var(--bad-bg);}
   .warn-badge{
@@ -385,8 +402,8 @@
   .photo-add-btn{
     border:1.5px dashed var(--line);
     border-radius:3px;
-    padding:12px;
-    font-size:13.5px;
+    padding:14px;
+    font-size:14px;
     font-weight:600;
     color:var(--muted);
     background:#fafafa;
@@ -394,6 +411,7 @@
     align-items:center;
     gap:8px;
     justify-content:center;
+    min-height:48px;
   }
   .photo-add-btn:hover{border-color:var(--ink);color:var(--ink);}
   .photo-hr{border:none;border-top:1px solid var(--line-soft);margin:18px 0;}
@@ -405,15 +423,17 @@
     background:#fff;
     border-top:1px solid var(--line);
     padding:12px 16px;
+    padding-bottom:calc(12px + env(safe-area-inset-bottom, 0px));
     display:flex;
     align-items:center;
     justify-content:space-between;
     gap:10px;
+    flex-wrap:wrap;
     z-index:30;
   }
   .save-status{font-size:12.5px;color:var(--muted-2);display:flex;align-items:center;gap:6px;}
   .save-status .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);}
-  .bottom-bar-actions{display:flex;gap:8px;}
+  .bottom-bar-actions{display:flex;gap:8px;flex-wrap:wrap;}
 
   /* ---------- Report ---------- */
   #view-report-scroll{flex:1;background:#D9DBDD;padding:26px 14px 60px;display:flex;flex-direction:column;align-items:center;}
@@ -506,9 +526,9 @@
 
   .icon-btn{
     background:transparent;border:1.5px solid #4A4C4E;color:#fff;
-    width:34px;height:34px;border-radius:3px;
+    width:40px;height:40px;border-radius:3px;
     display:flex;align-items:center;justify-content:center;
-    font-size:16px;flex:none;
+    font-size:17px;flex:none;
   }
   .icon-btn:hover{border-color:#8A8C8E;}
   .icon-btn.has-config{border-color:var(--ok);}
@@ -583,8 +603,9 @@
   .user-badge{
     display:flex;align-items:center;gap:7px;
     background:transparent;border:1.5px solid #4A4C4E;color:#fff;
-    border-radius:20px;padding:5px 12px 5px 6px;font-size:12.5px;font-weight:600;
+    border-radius:20px;padding:6px 12px 6px 6px;font-size:12.5px;font-weight:600;
     max-width:190px;
+    min-height:32px;
   }
   .user-badge .avatar{
     width:20px;height:20px;border-radius:50%;background:var(--accent);
@@ -705,8 +726,28 @@
 
   @media (max-width:640px){
     .field-row,.field-row.three{grid-template-columns:1fr;}
-    .topbar-title{font-size:17px;}
-    .sheet{padding:16px;}
+    .topbar-title{font-size:17px;max-width:60vw;}
+    .topbar-sub{max-width:60vw;}
+    .user-badge{max-width:120px;}
+    .sheet{padding:14px;}
+    .rtable{font-size:11.5px;}
+    .rtable th,.rtable td{padding:5px 6px;}
+    #view-report-scroll,#view-executive-scroll,#executive-sheet-wrap{padding-left:8px;padding-right:8px;}
+    .exec-stats-grid{grid-template-columns:repeat(2,1fr);}
+    .rphoto-cell{min-height:110px;}
+    .rphoto-cell img{max-height:120px;}
+    .field-row.three{grid-template-columns:1fr;}
+    .net-device-card{padding:12px 12px 2px;}
+    .home-head h1{font-size:25px;}
+    .report-card{flex-direction:column;align-items:stretch;}
+    .report-card-actions{justify-content:flex-end;}
+  }
+
+  @media (max-width:400px){
+    .topbar-title{font-size:16px;}
+    .logo img{height:22px;}
+    .user-badge .email{display:none;}
+    .user-badge{padding:6px;border-radius:50%;}
   }
 
   @media print{
@@ -1241,6 +1282,20 @@
       title.textContent = "Informe Entregable al Cliente";
       sub.textContent = "Resumen ejecutivo por fecha";
     }
+    requestAnimationFrame(syncStickyOffsets);
+  }
+
+  // Measures the real rendered height of the topbar (and stepper, when present)
+  // so the stepper stays pinned right below it and section scroll-jumps land
+  // in the right spot — even if the topbar wraps to two lines on a small phone.
+  function syncStickyOffsets(){
+    var topbar = document.querySelector(".topbar");
+    if(!topbar) return;
+    var topbarH = topbar.offsetHeight;
+    document.documentElement.style.setProperty("--topbar-h", topbarH + "px");
+    var stepper = document.querySelector(".stepper-wrap");
+    var extra = stepper ? stepper.offsetHeight : 0;
+    document.documentElement.style.setProperty("--scroll-offset", (topbarH + extra + 14) + "px");
   }
 
   function updateReportActionVisibility(){
@@ -1558,6 +1613,7 @@
     });
     el.innerHTML = html;
     bindFormEvents();
+    requestAnimationFrame(syncStickyOffsets);
   }
 
   function applyTransform(input){
@@ -2652,6 +2708,10 @@
 
   /* ============ INIT ============ */
   document.addEventListener("DOMContentLoaded", function(){
+    syncStickyOffsets();
+    window.addEventListener("resize", syncStickyOffsets);
+    window.addEventListener("orientationchange", function(){ setTimeout(syncStickyOffsets, 300); });
+
     $("#btn-form-home").onclick = goHome;
     $("#btn-report-home").onclick = goHome;
     $("#btn-go-report").onclick = function(){
