@@ -405,6 +405,8 @@
   .warn-badge.warn-yes{background:var(--warn-bg);color:var(--warn);}
   .warn-badge.warn-no{background:var(--ok-bg);color:var(--ok);}
 
+  .photo-btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+  .photo-btn-row .photo-add-btn{flex:1;min-width:150px;}
   .photo-add-btn{
     border:1.5px dashed var(--line);
     border-radius:3px;
@@ -1741,13 +1743,19 @@
     b += '<div class="photo-group">';
     b += '<div class="photo-group-title">Cómo se encontró (Antes)</div>';
     b += '<div id="photos-antes-grid">' + photoThumbsHTML(state.fotosAntes, "antes") + '</div>';
-    b += '<label class="photo-add-btn">＋ Agregar foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" id="input-antes"></label>';
+    b += '<div class="photo-btn-row">';
+    b += '<label class="photo-add-btn">📷 Tomar foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" id="input-antes-camera"></label>';
+    b += '<label class="photo-add-btn">🖼️ Elegir de galería<input type="file" accept="image/*" multiple style="display:none" id="input-antes-gallery"></label>';
+    b += '</div>';
     b += '</div>';
     b += '<hr class="photo-hr">';
     b += '<div class="photo-group">';
     b += '<div class="photo-group-title">Cómo quedó (Después)</div>';
     b += '<div id="photos-despues-grid">' + photoThumbsHTML(state.fotosDespues, "despues") + '</div>';
-    b += '<label class="photo-add-btn">＋ Agregar foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" id="input-despues"></label>';
+    b += '<div class="photo-btn-row">';
+    b += '<label class="photo-add-btn">📷 Tomar foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" id="input-despues-camera"></label>';
+    b += '<label class="photo-add-btn">🖼️ Elegir de galería<input type="file" accept="image/*" multiple style="display:none" id="input-despues-gallery"></label>';
+    b += '</div>';
     b += '</div>';
     b += '</div></div>';
     return b;
@@ -1828,8 +1836,10 @@
   function bindFormEvents(){
     bindDataPathInputs($("#view-form-scroll"));
 
-    $("#input-antes").addEventListener("change", function(e){ handlePhotoInput(e, "fotosAntes", "photos-antes-grid"); });
-    $("#input-despues").addEventListener("change", function(e){ handlePhotoInput(e, "fotosDespues", "photos-despues-grid"); });
+    $("#input-antes-camera").addEventListener("change", function(e){ handlePhotoInput(e, "fotosAntes", "photos-antes-grid"); });
+    $("#input-antes-gallery").addEventListener("change", function(e){ handlePhotoInput(e, "fotosAntes", "photos-antes-grid"); });
+    $("#input-despues-camera").addEventListener("change", function(e){ handlePhotoInput(e, "fotosDespues", "photos-despues-grid"); });
+    $("#input-despues-gallery").addEventListener("change", function(e){ handlePhotoInput(e, "fotosDespues", "photos-despues-grid"); });
     bindPhotoRemoveButtons();
     bindNetworkingDeviceButtons();
   }
