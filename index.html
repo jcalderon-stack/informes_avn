@@ -1675,7 +1675,7 @@
       + '</div>'
       + '<div class="field-row three">'
         + fieldHTML(p+"puertosUsados","Puertos usados",{type:"number"})
-        + fieldHTML(p+"puertosLibres","Puertos libres",{type:"number"})
+        + fieldHTML(p+"puertosLibres","Puertos libres",{type:"number", readonly:true, placeholder:"—"})
         + fieldHTML(p+"ipAdmin","IP de Administración",{placeholder:"Ej: 10.10.110.5"})
       + '</div>'
       + '<div class="field-row">'
@@ -1748,19 +1748,13 @@
     b += '<div class="photo-group">';
     b += '<div class="photo-group-title">Cómo se encontró (Antes)</div>';
     b += '<div id="photos-antes-grid">' + photoThumbsHTML(state.fotosAntes, "antes") + '</div>';
-    b += '<div class="photo-btn-row">';
-    b += '<label class="photo-add-btn">📷 Tomar foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" id="input-antes-camera"></label>';
-    b += '<label class="photo-add-btn">🖼️ Elegir de galería<input type="file" accept="image/*" multiple style="display:none" id="input-antes-gallery"></label>';
-    b += '</div>';
+    b += '<label class="photo-add-btn">📷 Agregar foto<input type="file" accept="image/*" multiple style="display:none" id="input-antes"></label>';
     b += '</div>';
     b += '<hr class="photo-hr">';
     b += '<div class="photo-group">';
     b += '<div class="photo-group-title">Cómo quedó (Después)</div>';
     b += '<div id="photos-despues-grid">' + photoThumbsHTML(state.fotosDespues, "despues") + '</div>';
-    b += '<div class="photo-btn-row">';
-    b += '<label class="photo-add-btn">📷 Tomar foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" id="input-despues-camera"></label>';
-    b += '<label class="photo-add-btn">🖼️ Elegir de galería<input type="file" accept="image/*" multiple style="display:none" id="input-despues-gallery"></label>';
-    b += '</div>';
+    b += '<label class="photo-add-btn">📷 Agregar foto<input type="file" accept="image/*" multiple style="display:none" id="input-despues"></label>';
     b += '</div>';
     b += '</div></div>';
     return b;
@@ -1812,6 +1806,21 @@
     return clean;
   }
 
+  // Puertos Libres = Port (24/48) - Puertos Usados, calculado solo.
+  function recalcPuertosLibres(deviceIdx){
+    var device = state.networking.devices[deviceIdx];
+    if(!device) return;
+    var port = parseInt(device.port, 10);
+    var usados = parseInt(device.puertosUsados, 10);
+    var libres = "";
+    if(!isNaN(port) && !isNaN(usados)){
+      libres = String(Math.max(0, port - usados));
+    }
+    device.puertosLibres = libres;
+    var input = document.querySelector('[data-path="networking.devices.'+deviceIdx+'.puertosLibres"]');
+    if(input) input.value = libres;
+  }
+
   function bindDataPathInputs(root){
     $all("[data-path]", root).forEach(function(input){
       var isCheckbox = input.type === "checkbox";
@@ -1832,6 +1841,10 @@
         if(/\.warning$/.test(input.dataset.path)){
           rerenderNetworkingDevices();
         }
+        var portUsadosMatch = input.dataset.path.match(/^networking\.devices\.(\d+)\.(port|puertosUsados)$/);
+        if(portUsadosMatch){
+          recalcPuertosLibres(parseInt(portUsadosMatch[1], 10));
+        }
         if(isCheckbox) renderStepper();
         scheduleSave();
       });
@@ -1841,10 +1854,8 @@
   function bindFormEvents(){
     bindDataPathInputs($("#view-form-scroll"));
 
-    $("#input-antes-camera").addEventListener("change", function(e){ handlePhotoInput(e, "fotosAntes", "photos-antes-grid"); });
-    $("#input-antes-gallery").addEventListener("change", function(e){ handlePhotoInput(e, "fotosAntes", "photos-antes-grid"); });
-    $("#input-despues-camera").addEventListener("change", function(e){ handlePhotoInput(e, "fotosDespues", "photos-despues-grid"); });
-    $("#input-despues-gallery").addEventListener("change", function(e){ handlePhotoInput(e, "fotosDespues", "photos-despues-grid"); });
+    $("#input-antes").addEventListener("change", function(e){ handlePhotoInput(e, "fotosAntes", "photos-antes-grid"); });
+    $("#input-despues").addEventListener("change", function(e){ handlePhotoInput(e, "fotosDespues", "photos-despues-grid"); });
     bindPhotoRemoveButtons();
     bindNetworkingDeviceButtons();
   }
