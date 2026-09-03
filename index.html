@@ -468,7 +468,7 @@
     display:flex;align-items:center;border-radius:2px;
   }
   .sheet-titlebar .avn-logo-box img{height:32px;width:auto;display:block;}
-  .sheet-titlebar h1{font-size:22px;font-weight:700;white-space:nowrap;letter-spacing:normal;}
+  .sheet-titlebar h1{font-size:22px;font-weight:700;white-space:nowrap;letter-spacing:normal;font-family:'Inter',sans-serif;}
   .sheet-titlebar .qs-logo{height:34px;width:auto;flex:none;}
   .sheet-logos-row{
     background:#fff;
@@ -691,19 +691,19 @@
     padding:9px 16px;display:flex;align-items:center;font-size:16px;letter-spacing:.04em;border-radius:2px;
   }
   .exec-title{text-align:center;margin-bottom:22px;}
-  .exec-title h1{font-size:25px;font-weight:700;letter-spacing:normal;}
+  .exec-title h1{font-size:24px;font-weight:700;letter-spacing:normal;font-family:'Inter',sans-serif;}
   .exec-title .sub{font-size:14px;color:var(--muted);margin-top:2px;}
 
   .exec-intro{font-size:14.5px;line-height:1.65;margin-bottom:22px;color:#242424;text-align:justify;}
 
   .exec-section-title{
-    font-family:'Barlow Condensed';font-size:19px;font-weight:700;
+    font-family:'Inter',sans-serif;font-size:18px;font-weight:700;letter-spacing:normal;
     margin:26px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--ink);
   }
 
   .exec-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:8px;}
   .exec-stat-card{border:1px solid var(--line);border-radius:4px;padding:14px;text-align:center;background:#fff;}
-  .exec-stat-num{font-family:'Barlow Condensed';font-size:30px;font-weight:800;line-height:1;}
+  .exec-stat-num{font-family:'Inter',sans-serif;font-size:28px;font-weight:800;line-height:1;letter-spacing:normal;}
   .exec-stat-label{font-size:11.5px;color:var(--muted);margin-top:4px;}
 
   .exec-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
@@ -2072,6 +2072,11 @@
     var doc = new jsPDF("p", "pt", "a4");
     var pageW = doc.internal.pageSize.getWidth();
     var margin = 24;
+    // Ancho "de diseño" de la hoja (coincide con max-width:800px de .sheet en
+    // el CSS). Si en vez de esto usamos el ancho real de pantalla, en un
+    // celular (mucho más angosto) todo el contenido que no entra en esa
+    // pantalla chica queda cortado al generar el PDF.
+    var SHEET_DESIGN_WIDTH = 800;
     // Esperar a que las fuentes (Barlow Condensed / Inter) estén realmente
     // cargadas antes de rasterizar: si html2canvas dibuja antes de tiempo,
     // el texto en negrita puede salir con letras superpuestas o sin espacios.
@@ -2080,13 +2085,13 @@
       return doc.html(sheetEl, {
         margin: [margin, margin, margin, margin],
         width: pageW - margin * 2,
-        windowWidth: sheetEl.scrollWidth,
+        windowWidth: SHEET_DESIGN_WIDTH,
         // jsPDF ya calcula el ajuste de tamaño internamente a partir de
         // width/windowWidth. Cualquier "scale" distinto de 1 acá lo
         // desajusta: valores menores dan texto borroso/amontonado y
         // valores mayores hacen que el contenido se agrande y se corte
         // en el borde de la página.
-        html2canvas: { scale: 1, useCORS: true }
+        html2canvas: { scale: 1, useCORS: true, windowWidth: SHEET_DESIGN_WIDTH }
       });
     }).then(function(){ return doc; });
   }
