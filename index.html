@@ -646,6 +646,11 @@
     padding:18px 0 20px;border-bottom:2px solid var(--ink);margin-bottom:20px;flex-wrap:wrap;
   }
   .exec-logos-row img{height:38px;width:auto;}
+  .exec-logo-badge{
+    background:var(--ink);
+    padding:8px 14px;display:flex;align-items:center;border-radius:2px;
+  }
+  .exec-logo-badge img{height:26px;width:auto;}
   .exec-logo-placeholder{
     background:var(--ink);color:#fff;font-weight:800;font-family:'Barlow Condensed';
     padding:9px 16px;display:flex;align-items:center;font-size:16px;letter-spacing:.04em;border-radius:2px;
@@ -814,8 +819,13 @@
     {id:"networking",  num:5, title:"Networking"},
     {id:"electrica",   num:6, title:"Red Eléctrica", items:["Puesta a Tierra","Etiquetado","UPS"]},
     {id:"fotos",       num:7, title:"Fotos"},
-    {id:"responsable", num:8, title:"Responsable"}
+    {id:"observaciones", num:8, title:"Observaciones"},
+    {id:"responsable", num:9, title:"Responsable"}
   ];
+
+  var EMPRESAS = ["PNC IT"];
+  var SWITCH_MODELOS = ["Cisco 350", "Cisco SG550X", "Cisco Catalyst 1300"];
+  var SWITCH_PORTS = ["24", "48"];
 
   /* ============ STATE ============ */
   function emptyChecklist(items){
@@ -825,7 +835,7 @@
   }
 
   function emptyNetworkDevice(){
-    return {marcaModelo:"", cantidadPuertos:"", puertosUsados:"", puertosLibres:"", warning:"", warningDetalle:""};
+    return {marcaModelo:"", port:"", puertosUsados:"", puertosLibres:"", ipAdmin:"", warning:"", warningDetalle:""};
   }
 
   function newReport(){
@@ -835,18 +845,29 @@
       createdByEmail: authEmail || "",
       createdByName: authName || "",
       control: {numero:"", fecha:"", nombreRack:"", etiquetaRack:"", ubicacion:"", latitud:"", longitud:"", empresa:""},
-      exterior: {items: emptyChecklist(SECTIONS[1].items), detalles:""},
-      interior: {items: emptyChecklist(SECTIONS[2].items), detalles:""},
-      termico: {items: emptyChecklist(SECTIONS[3].items), coolerCantidad:"", detalles:""},
-      networking: {devices: [emptyNetworkDevice()], detalles:""},
-      electrica: {items: emptyChecklist(SECTIONS[5].items), marca:"", modelo:"", ip:"", tension:"", detalles:""},
+      exterior: {items: emptyChecklist(SECTIONS[1].items)},
+      interior: {items: emptyChecklist(SECTIONS[2].items)},
+      termico: {items: emptyChecklist(SECTIONS[3].items), coolerCantidad:""},
+      networking: {devices: [emptyNetworkDevice()]},
+      electrica: {items: emptyChecklist(SECTIONS[5].items), marca:"", modelo:""},
       fotosAntes: [],
       fotosDespues: [],
+      observaciones: "",
       responsable: {nombre:"", fecha:""}
     };
   }
 
-  // Migrates reports saved before "Networking" supported multiple devices.
+  var LEGACY_AREA_LABELS = {
+    exterior: "Exterior del gabinete",
+    interior: "Interior del gabinete",
+    termico: "Refrigeración y ventilación",
+    networking: "Red de datos",
+    electrica: "Alimentación eléctrica"
+  };
+
+  // Migrates reports saved before "Networking" supported multiple devices,
+  // and before per-section "Detalles" fields were merged into a single
+  // "Observaciones" field at the end of the report.
   function migrateReport(r){
     if(r && r.networking && !Array.isArray(r.networking.devices)){
       var old = r.networking;
@@ -863,12 +884,38 @@
     if(r && (!r.networking || !r.networking.devices || !r.networking.devices.length)){
       r.networking = r.networking || {};
       r.networking.devices = [emptyNetworkDevice()];
-      if(r.networking.detalles === undefined) r.networking.detalles = "";
     }
+
+    // Fold legacy per-section "detalles" text and the retired electrica IP/Tensión
+    // fields into the single top-level "observaciones", so nothing gets lost.
+    if(r && r.observaciones === undefined){
+      var pieces = [];
+      ["exterior", "interior", "termico", "networking", "electrica"].forEach(function(s){
+        if(r[s] && r[s].detalles && String(r[s].detalles).trim()){
+          pieces.push("[" + (LEGACY_AREA_LABELS[s] || s) + "] " + String(r[s].detalles).trim());
+        }
+      });
+      if(r.electrica){
+        if(r.electrica.ip) pieces.push("[Red eléctrica] IP: " + r.electrica.ip);
+        if(r.electrica.tension) pieces.push("[Red eléctrica] Tensión: " + r.electrica.tension);
+      }
+      r.observaciones = pieces.join("\n");
+    }
+    ["exterior", "interior", "termico", "networking", "electrica"].forEach(function(s){
+      if(r[s] && r[s].detalles !== undefined) delete r[s].detalles;
+    });
+    if(r && r.electrica){
+      delete r.electrica.ip;
+      delete r.electrica.tension;
+    }
+
     if(r && r.networking && Array.isArray(r.networking.devices)){
       r.networking.devices = r.networking.devices.map(function(d){
         var merged = emptyNetworkDevice();
-        for(var k in d){ if(k in merged) merged[k] = d[k]; }
+        for(var k in d){
+          if(k === "cantidadPuertos"){ merged.port = d[k]; }
+          else if(k in merged){ merged[k] = d[k]; }
+        }
         return merged;
       });
     }
@@ -1268,6 +1315,7 @@
   function isSectionDone(id){
     if(id === "control") return !!(state.control.nombreRack && state.control.numero);
     if(id === "fotos") return state.fotosAntes.length>0 || state.fotosDespues.length>0;
+    if(id === "observaciones") return !!(state.observaciones && state.observaciones.trim());
     if(id === "responsable") return !!state.responsable.nombre;
     if(id === "networking") return state.networking.devices.some(function(d){ return !!d.marcaModelo; });
     var sec = state[id];
@@ -1328,7 +1376,7 @@
     b += '<div class="field-row">' + fieldHTML("control.nombreRack","Nombre de rack",{placeholder:"Ej: DOMO53", transform:"upperAlnum"}) + fieldHTML("control.etiquetaRack","Etiqueta de rack",{placeholder:"Ej: SW-DOMO53"}) + '</div>';
     b += '<div class="field-row single">' + fieldHTML("control.ubicacion","Ubicación",{placeholder:"Ej: Perímetro El Yacht"}) + '</div>';
     b += '<div class="field-row">' + fieldHTML("control.latitud","Latitud",{placeholder:"-34.385035"}) + fieldHTML("control.longitud","Longitud",{placeholder:"-58.653196"}) + '</div>';
-    b += '<div class="field-row single">' + fieldHTML("control.empresa","Empresa",{placeholder:"Ej: PNC IT"}) + '</div>';
+    b += '<div class="field-row single">' + selectFieldHTML("control.empresa","Empresa",EMPRESAS) + '</div>';
     b += '</div></div>';
     return b;
   }
@@ -1341,8 +1389,6 @@
       b += checklistRowHTML(s.id, item, extra);
     });
     b += '</div>';
-    b += '<label class="detalles-label">Detalles / observaciones</label>';
-    b += '<textarea data-path="'+s.id+'.detalles" placeholder="Anotá hallazgos, recomendaciones, tareas realizadas...">'+esc(state[s.id].detalles)+'</textarea>';
     b += '</div></div>';
     return b;
   }
@@ -1357,11 +1403,14 @@
       : (d.warning === "No" ? '<span class="warn-badge warn-no">✓ OK</span>' : '');
     return '<div class="net-device-card">'
       + '<div class="net-device-head"><span class="net-device-title">Dispositivo '+(idx+1)+'</span>'+warnBadge+'<span style="flex:1"></span>'+removeBtn+'</div>'
-      + '<div class="field-row single">' + fieldHTML(p+"marcaModelo","Marca y modelo de switch",{placeholder:"Ej: CISCO X550"}) + '</div>'
+      + '<div class="field-row">'
+        + selectFieldHTML(p+"marcaModelo","Marca y modelo de SW", SWITCH_MODELOS)
+        + selectFieldHTML(p+"port","Port", SWITCH_PORTS)
+      + '</div>'
       + '<div class="field-row three">'
-        + fieldHTML(p+"cantidadPuertos","Cantidad de puertos",{type:"number"})
         + fieldHTML(p+"puertosUsados","Puertos usados",{type:"number"})
         + fieldHTML(p+"puertosLibres","Puertos libres",{type:"number"})
+        + fieldHTML(p+"ipAdmin","IP de Administración",{placeholder:"Ej: 10.10.110.5"})
       + '</div>'
       + '<div class="field-row">'
         + selectFieldHTML(p+"warning","¿Tiene algún warning?",["Sí","No"])
@@ -1378,9 +1427,7 @@
   function renderNetworkingSection(s){
     var b = '<div class="section-card" id="card-networking">' + sectionHead(s) + '<div class="section-body">';
     b += '<div id="networking-devices">' + networkingDevicesHTML() + '</div>';
-    b += '<button type="button" class="photo-add-btn" id="btn-add-device" style="margin-bottom:16px;">＋ Agregar dispositivo</button>';
-    b += '<label class="detalles-label">Detalles / observaciones</label>';
-    b += '<textarea data-path="networking.detalles" placeholder="Ej: el puerto 6 no está linkeando...">'+esc(state.networking.detalles)+'</textarea>';
+    b += '<button type="button" class="photo-add-btn" id="btn-add-device">＋ Agregar dispositivo</button>';
     b += '</div></div>';
     return b;
   }
@@ -1390,10 +1437,16 @@
     b += '<div class="checklist">';
     s.items.forEach(function(item){ b += checklistRowHTML("electrica", item, null); });
     b += '</div>';
-    b += '<div class="field-row" style="margin-top:14px;">' + fieldHTML("electrica.marca","Marca",{placeholder:"Ej: EATON"}) + fieldHTML("electrica.ip","IP",{placeholder:"10.10.110.79"}) + '</div>';
-    b += '<div class="field-row">' + fieldHTML("electrica.modelo","Modelo",{placeholder:"Ej: DX 1000"}) + fieldHTML("electrica.tension","Tensión",{placeholder:"220"}) + '</div>';
-    b += '<label class="detalles-label">Detalles / observaciones</label>';
-    b += '<textarea data-path="electrica.detalles">'+esc(state.electrica.detalles)+'</textarea>';
+    b += '<div class="field-row" style="margin-top:14px;">' + fieldHTML("electrica.marca","Marca (UPS)",{placeholder:"Ej: EATON"}) + fieldHTML("electrica.modelo","Modelo (UPS)",{placeholder:"Ej: DX 1000"}) + '</div>';
+    b += '</div></div>';
+    return b;
+  }
+
+  function renderObservacionesSection(s){
+    var b = '<div class="section-card" id="card-observaciones">' + sectionHead(s) + '<div class="section-body">';
+    b += '<div class="field-row single">'
+      + '<div class="field"><label>Notas generales del relevamiento</label><textarea data-path="observaciones" placeholder="Anotá hallazgos, recomendaciones y tareas realizadas durante este relevamiento...">'+esc(state.observaciones)+'</textarea></div>'
+    + '</div>';
     b += '</div></div>';
     return b;
   }
@@ -1440,6 +1493,7 @@
       else if(s.id === "networking") html += renderNetworkingSection(s);
       else if(s.id === "electrica") html += renderElectricaSection(s);
       else if(s.id === "fotos") html += renderFotosSection(s);
+      else if(s.id === "observaciones") html += renderObservacionesSection(s);
       else if(s.id === "responsable") html += renderResponsableSection(s);
       else html += renderChecklistSection(s);
     });
@@ -1566,12 +1620,11 @@
     }).join("");
   }
 
-  function reportSectionTable(title, rowsHtml, detailText, detailLabel){
+  function reportSectionTable(title, rowsHtml){
     return ''
     + '<table class="rtable">'
-    + '<tr><th class="hd" colspan="3">'+esc(title)+'</th><th class="hd" style="width:34%">'+ (detailLabel||"DETALLES") +'</th></tr>'
-    + '<tr><td class="lbl" style="width:46%"></td><td class="lbl" style="width:20%">ESTADO</td><td class="lbl" style="width:10%">CHECK</td>'
-      + '<td class="detail-cell" rowspan="'+ (rowsHtml.split("<tr>").length) +'">'+ (esc(detailText).replace(/\n/g,"<br>") || "—") +'</td></tr>'
+    + '<tr><th class="hd" colspan="3">'+esc(title)+'</th></tr>'
+    + '<tr><td class="lbl" style="width:60%"></td><td class="lbl" style="width:25%">ESTADO</td><td class="lbl" style="width:15%">CHECK</td></tr>'
     + rowsHtml
     + '</table>';
   }
@@ -1626,36 +1679,38 @@
       + '<tr><td class="lbl">EMPRESA</td><td>'+esc(c.empresa||"—")+'</td><td class="lbl">LONGITUD</td><td>'+esc(c.longitud||"—")+'</td></tr>'
     + '</table>';
 
-    html += reportSectionTable("EXTERIOR", checklistRowsForReport("exterior", SECTIONS[1].items), state.exterior.detalles);
-    html += reportSectionTable("INTERIOR", checklistRowsForReport("interior", SECTIONS[2].items), state.interior.detalles);
-    html += reportSectionTable("ACONDICIONAMIENTO TÉRMICO", checklistRowsForReport("termico", SECTIONS[3].items), state.termico.detalles, "DETALLES");
+    html += reportSectionTable("EXTERIOR", checklistRowsForReport("exterior", SECTIONS[1].items));
+    html += reportSectionTable("INTERIOR", checklistRowsForReport("interior", SECTIONS[2].items));
+    html += reportSectionTable("ACONDICIONAMIENTO TÉRMICO", checklistRowsForReport("termico", SECTIONS[3].items));
 
     var n = state.networking;
     var netRows = '';
     n.devices.forEach(function(d, i){
       var warnClass = d.warning === "Sí" ? "estado-cell MAL" : (d.warning === "No" ? "estado-cell BIEN" : "estado-cell");
       netRows += '<tr><td colspan="3" style="font-weight:700;background:#F2F2F2;">'+esc(d.marcaModelo || ("Dispositivo "+(i+1)))+'</td></tr>';
-      netRows += '<tr><td>Cantidad de Puertos</td><td colspan="2">'+esc(d.cantidadPuertos||"—")+'</td></tr>';
+      netRows += '<tr><td>Port</td><td colspan="2">'+esc(d.port||"—")+'</td></tr>';
       netRows += '<tr><td>Puertos Usados</td><td colspan="2">'+esc(d.puertosUsados||"—")+'</td></tr>';
       netRows += '<tr><td>Puertos Libres</td><td colspan="2">'+esc(d.puertosLibres||"—")+'</td></tr>';
+      netRows += '<tr><td>IP de Administración</td><td colspan="2">'+esc(d.ipAdmin||"—")+'</td></tr>';
       netRows += '<tr><td>¿Warning?</td><td colspan="2" class="'+warnClass+'">'+esc(d.warning||"—")+'</td></tr>';
       netRows += '<tr><td>Detalle del warning</td><td colspan="2">'+esc(d.warningDetalle||"—")+'</td></tr>';
     });
-    var netRowSpan = 1 + n.devices.length * 6;
     html += ''
       + '<table class="rtable">'
-      + '<tr><th class="hd" colspan="3">NETWORKING</th><th class="hd" style="width:34%">DETALLES</th></tr>'
-      + '<tr><td class="lbl">DISPOSITIVO / MÉTRICA</td><td class="lbl">ESTADO</td><td class="lbl">CHECK</td><td class="detail-cell" rowspan="'+netRowSpan+'">'+(esc(n.detalles).replace(/\n/g,"<br>")||"—")+'</td></tr>'
+      + '<tr><th class="hd" colspan="3">NETWORKING</th></tr>'
+      + '<tr><td class="lbl">DISPOSITIVO / MÉTRICA</td><td class="lbl">ESTADO</td><td class="lbl">CHECK</td></tr>'
       + netRows
       + '</table>';
 
-    html += reportSectionTable("RED ELÉCTRICA", checklistRowsForReport("electrica", SECTIONS[5].items), "", "DETALLES");
-    html += reportGridTable([["MARCA", state.electrica.marca],["IP", state.electrica.ip],["MODELO", state.electrica.modelo],["TENSIÓN", state.electrica.tension]]);
-    if(state.electrica.detalles){
-      html += '<table class="rtable"><tr><td class="lbl" style="width:20%">DETALLES RED ELÉCTRICA</td><td>'+esc(state.electrica.detalles).replace(/\n/g,"<br>")+'</td></tr></table>';
-    }
+    html += reportSectionTable("RED ELÉCTRICA", checklistRowsForReport("electrica", SECTIONS[5].items));
+    html += reportGridTable([["MARCA (UPS)", state.electrica.marca],["MODELO (UPS)", state.electrica.modelo]]);
 
     html += reportPhotoGrid();
+
+    html += '<table class="rtable">'
+      + '<tr><th class="hd">OBSERVACIONES</th></tr>'
+      + '<tr><td>'+(esc(state.observaciones).replace(/\n/g,"<br>") || "—")+'</td></tr>'
+    + '</table>';
 
     html += '<table class="rtable">'
       + '<tr><th class="hd" style="width:70%">TÉCNICO RESPONSABLE</th><th class="hd">FECHA</th></tr>'
@@ -1782,13 +1837,6 @@
 
   /* ============ EXECUTIVE / CLIENT REPORT (admin only) ============ */
   var ESTADO_PLAIN = { "BIEN": "En buen estado", "REGULAR": "Requiere atención", "MAL": "Necesita reparación" };
-  var AREA_LABELS = {
-    exterior: "Exterior del gabinete",
-    interior: "Interior del gabinete",
-    termico: "Refrigeración y ventilación",
-    networking: "Red de datos",
-    electrica: "Alimentación eléctrica"
-  };
 
   function goExecutive(){
     if(authRole !== "admin"){ toast("No tenés permiso para esta acción"); return; }
@@ -1839,12 +1887,9 @@
   function collectMejoras(reports){
     var list = [];
     reports.forEach(function(r){
-      Object.keys(AREA_LABELS).forEach(function(s){
-        var det = r[s] && r[s].detalles;
-        if(det && det.trim()){
-          list.push({ rack: r.control.nombreRack || "Rack sin nombre", area: AREA_LABELS[s], text: det.trim() });
-        }
-      });
+      if(r.observaciones && r.observaciones.trim()){
+        list.push({ rack: r.control.nombreRack || "Rack sin nombre", text: r.observaciones.trim() });
+      }
     });
     return list;
   }
@@ -2019,7 +2064,7 @@
 
     html += '<div class="exec-logos-row">'
       + '<img src="'+LOGO_AVN+'" alt="AVN">'
-      + '<span class="exec-logo-placeholder">SUPPORTQSS</span>'
+      + '<span class="exec-logo-badge"><img src="'+LOGO_QUICKSOLUTIONS+'" alt="Support QSS"></span>'
       + '<img src="'+LOGO_PNCIT+'" alt="PNC IT">'
     + '</div>';
 
@@ -2077,7 +2122,7 @@
     html += '<div class="exec-section-title">Mejoras y tareas realizadas</div>';
     if(mejoras.length){
       mejoras.forEach(function(m){
-        html += '<div class="exec-list-item"><span class="exec-rack-tag">'+esc(m.rack)+'</span> — '+esc(m.area)+': '+esc(m.text)+'</div>';
+        html += '<div class="exec-list-item"><span class="exec-rack-tag">'+esc(m.rack)+'</span> — '+esc(m.text)+'</div>';
       });
     } else {
       html += '<div class="exec-empty-note">No se registraron observaciones adicionales sobre tareas realizadas.</div>';
