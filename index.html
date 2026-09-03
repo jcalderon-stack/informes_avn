@@ -323,6 +323,12 @@
   .estado-dot.BIEN{background:var(--ok);}
   .estado-dot.REGULAR{background:var(--warn);}
   .estado-dot.MAL{background:var(--bad);}
+  .mejora-check{
+    display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600;color:var(--muted);
+    cursor:pointer;flex:none;
+  }
+  .mejora-check input[type=checkbox]{width:18px;height:18px;accent-color:var(--ink);cursor:pointer;}
+  .mejora-check:has(input:checked){color:var(--ok);}
 
   .detalles-label{font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin:14px 0 5px;}
 
@@ -818,14 +824,26 @@
     {id:"termico",     num:4, title:"Acondicionamiento Térmico", items:["Burletes","Ventilación","Coolers","Regulador de Temperatura","Filtros"]},
     {id:"networking",  num:5, title:"Networking"},
     {id:"electrica",   num:6, title:"Red Eléctrica", items:["Puesta a Tierra","Etiquetado","UPS"]},
-    {id:"fotos",       num:7, title:"Fotos"},
-    {id:"observaciones", num:8, title:"Observaciones"},
-    {id:"responsable", num:9, title:"Responsable"}
+    {id:"mejoras",     num:7, title:"Mejoras Realizadas"},
+    {id:"fotos",       num:8, title:"Fotos"},
+    {id:"observaciones", num:9, title:"Observaciones"},
+    {id:"responsable", num:10, title:"Responsable"}
   ];
 
   var EMPRESAS = ["PNC IT"];
   var SWITCH_MODELOS = ["Cisco 350", "Cisco SG550X", "Cisco Catalyst 1300"];
   var SWITCH_PORTS = ["24", "48"];
+  var MEJORAS_ITEMS = [
+    "Cambio de Baterías UPS",
+    "Colocación de Cerradura",
+    "Mantenimiento general",
+    "Reordenamiento de Cables",
+    "Colocación de JACK",
+    "Funcionamiento de fibra óptica",
+    "Incidente",
+    "Colocación de Organizador",
+    "Colocación de PDU"
+  ];
 
   /* ============ STATE ============ */
   function emptyChecklist(items){
@@ -836,6 +854,12 @@
 
   function emptyNetworkDevice(){
     return {marcaModelo:"", port:"", puertosUsados:"", puertosLibres:"", ipAdmin:"", warning:"", warningDetalle:""};
+  }
+
+  function emptyMejorasItems(){
+    var o = {};
+    MEJORAS_ITEMS.forEach(function(k){ o[k] = { checked: false }; });
+    return o;
   }
 
   function newReport(){
@@ -850,6 +874,7 @@
       termico: {items: emptyChecklist(SECTIONS[3].items), coolerCantidad:""},
       networking: {devices: [emptyNetworkDevice()]},
       electrica: {items: emptyChecklist(SECTIONS[5].items), marca:"", modelo:""},
+      mejoras: {items: emptyMejorasItems(), incidenteDetalle:""},
       fotosAntes: [],
       fotosDespues: [],
       observaciones: "",
@@ -918,6 +943,18 @@
         }
         return merged;
       });
+    }
+
+    // Reports saved before "Mejoras Realizadas" existed
+    if(r && !r.mejoras){
+      r.mejoras = { items: emptyMejorasItems(), incidenteDetalle: "" };
+    } else if(r && r.mejoras){
+      var mergedItems = emptyMejorasItems();
+      MEJORAS_ITEMS.forEach(function(k){
+        if(r.mejoras.items && r.mejoras.items[k]) mergedItems[k] = r.mejoras.items[k];
+      });
+      r.mejoras.items = mergedItems;
+      if(r.mejoras.incidenteDetalle === undefined) r.mejoras.incidenteDetalle = "";
     }
     return r;
   }
@@ -1318,6 +1355,10 @@
     if(id === "observaciones") return !!(state.observaciones && state.observaciones.trim());
     if(id === "responsable") return !!state.responsable.nombre;
     if(id === "networking") return state.networking.devices.some(function(d){ return !!d.marcaModelo; });
+    if(id === "mejoras"){
+      return Object.keys(state.mejoras.items).some(function(k){ return state.mejoras.items[k].checked; })
+        || !!(state.mejoras.incidenteDetalle && state.mejoras.incidenteDetalle.trim());
+    }
     var sec = state[id];
     if(sec && sec.items){
       return Object.keys(sec.items).some(function(k){ return sec.items[k].estado; });
@@ -1442,6 +1483,23 @@
     return b;
   }
 
+  function renderMejorasSection(s){
+    var b = '<div class="section-card" id="card-mejoras">' + sectionHead(s) + '<div class="section-body">';
+    b += '<div class="checklist">';
+    MEJORAS_ITEMS.forEach(function(item){
+      var checked = !!(state.mejoras.items[item] && state.mejoras.items[item].checked);
+      b += '<div class="check-row">'
+        + '<span class="check-row-name">'+esc(item)+'</span>'
+        + '<label class="mejora-check"><input type="checkbox" data-path="mejoras.items.'+esc(item)+'.checked"'+(checked?' checked':'')+'> Realizado</label>'
+      + '</div>';
+    });
+    b += '</div>';
+    b += '<label class="detalles-label">Detalle del incidente (si aplica)</label>';
+    b += '<textarea data-path="mejoras.incidenteDetalle" placeholder="Descripción del incidente, si corresponde...">'+esc(state.mejoras.incidenteDetalle)+'</textarea>';
+    b += '</div></div>';
+    return b;
+  }
+
   function renderObservacionesSection(s){
     var b = '<div class="section-card" id="card-observaciones">' + sectionHead(s) + '<div class="section-body">';
     b += '<div class="field-row single">'
@@ -1492,6 +1550,7 @@
       if(s.id === "control") html += renderControlSection(s);
       else if(s.id === "networking") html += renderNetworkingSection(s);
       else if(s.id === "electrica") html += renderElectricaSection(s);
+      else if(s.id === "mejoras") html += renderMejorasSection(s);
       else if(s.id === "fotos") html += renderFotosSection(s);
       else if(s.id === "observaciones") html += renderObservacionesSection(s);
       else if(s.id === "responsable") html += renderResponsableSection(s);
@@ -1523,9 +1582,15 @@
 
   function bindDataPathInputs(root){
     $all("[data-path]", root).forEach(function(input){
-      var evt = (input.tagName === "SELECT") ? "change" : "input";
+      var isCheckbox = input.type === "checkbox";
+      var evt = (input.tagName === "SELECT" || isCheckbox) ? "change" : "input";
       input.addEventListener(evt, function(){
-        var value = applyTransform(input);
+        var value;
+        if(isCheckbox){
+          value = input.checked;
+        } else {
+          value = applyTransform(input);
+        }
         setPath(state, input.dataset.path, value);
         if(input.dataset.checklist){
           var dot = input.closest(".check-row").querySelector(".estado-dot");
@@ -1535,6 +1600,7 @@
         if(/\.warning$/.test(input.dataset.path)){
           rerenderNetworkingDevices();
         }
+        if(isCheckbox) renderStepper();
         scheduleSave();
       });
     });
@@ -1704,6 +1770,19 @@
 
     html += reportSectionTable("RED ELÉCTRICA", checklistRowsForReport("electrica", SECTIONS[5].items));
     html += reportGridTable([["MARCA (UPS)", state.electrica.marca],["MODELO (UPS)", state.electrica.modelo]]);
+
+    var mejorasRows = MEJORAS_ITEMS.map(function(k){
+      var done = !!(state.mejoras.items[k] && state.mejoras.items[k].checked);
+      return '<tr><td>'+esc(k)+'</td><td class="estado-cell '+(done?"BIEN":"")+'" style="text-align:center;">'+(done?"✔ Realizado":"—")+'</td></tr>';
+    }).join("");
+    html += '<table class="rtable">'
+      + '<tr><th class="hd" colspan="2">MEJORAS REALIZADAS</th></tr>'
+      + '<tr><td class="lbl" style="width:70%"></td><td class="lbl" style="width:30%">ESTADO</td></tr>'
+      + mejorasRows
+      + '</table>';
+    if(state.mejoras.incidenteDetalle && state.mejoras.incidenteDetalle.trim()){
+      html += '<table class="rtable"><tr><td class="lbl" style="width:25%">DETALLE DEL INCIDENTE</td><td>'+esc(state.mejoras.incidenteDetalle).replace(/\n/g,"<br>")+'</td></tr></table>';
+    }
 
     html += reportPhotoGrid();
 
