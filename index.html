@@ -732,6 +732,12 @@
   .exec-legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none;}
   .exec-subhead{font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:16px 0 8px;}
 
+  .exec-dual-chart{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px;}
+  .exec-dual-col{flex:1;min-width:260px;}
+  .exec-dual-col .exec-pie-wrap{flex-direction:column;align-items:flex-start;gap:14px;}
+  .exec-dual-col .exec-pie{width:120px;height:120px;}
+  .exec-dual-col .exec-subhead{margin-top:0;}
+
   .exec-footer{
     margin-top:26px;padding-top:14px;border-top:1px solid var(--line);
     font-size:11.5px;color:var(--muted);line-height:1.6;
@@ -904,6 +910,13 @@
   var EMPRESAS = ["PNC IT"];
   var SWITCH_MODELOS = ["Cisco 350", "Cisco SG550X", "Cisco Catalyst 1300"];
   var SWITCH_PORTS = ["24", "48"];
+  var FIBRA_OPTIONS = ["Fibra 50 - Roja", "Fibra 80 - Amarilla", "Fibra 100 - Verde", "Fibra 20 - Azul Celeste"];
+  var FIBRA_COLORS = {
+    "Fibra 50 - Roja": "#C6362E",
+    "Fibra 80 - Amarilla": "#E0B21C",
+    "Fibra 100 - Verde": "#1E8E5A",
+    "Fibra 20 - Azul Celeste": "#3FB6D8"
+  };
   var MEJORAS_ITEMS = [
     "Cambio de Baterías UPS",
     "Colocación de Cerradura",
@@ -945,7 +958,7 @@
       exterior: {items: emptyChecklist(SECTIONS[1].items)},
       interior: {items: emptyChecklist(SECTIONS[2].items)},
       termico: {items: emptyChecklist(SECTIONS[3].items), coolerCantidad:""},
-      networking: {devices: [emptyNetworkDevice()]},
+      networking: {devices: [emptyNetworkDevice()], fibra: ""},
       electrica: {items: emptyChecklist(SECTIONS[5].items), marca:"", modelo:""},
       mejoras: {items: emptyMejorasItems(), incidenteDetalle:""},
       fotosAntes: [],
@@ -982,6 +995,9 @@
     if(r && (!r.networking || !r.networking.devices || !r.networking.devices.length)){
       r.networking = r.networking || {};
       r.networking.devices = [emptyNetworkDevice()];
+    }
+    if(r && r.networking && r.networking.fibra === undefined){
+      r.networking.fibra = "";
     }
 
     // Fold legacy per-section "detalles" text and the retired electrica IP/Tensión
@@ -1704,6 +1720,7 @@
 
   function renderNetworkingSection(s){
     var b = '<div class="section-card" id="card-networking">' + sectionHead(s) + '<div class="section-body">';
+    b += '<div class="field-row single">' + selectFieldHTML("networking.fibra","Fibra que pertenece", FIBRA_OPTIONS) + '</div>';
     b += '<div id="networking-devices">' + networkingDevicesHTML() + '</div>';
     b += '<button type="button" class="photo-add-btn" id="btn-add-device">＋ Agregar dispositivo</button>';
     b += '</div></div>';
@@ -2007,6 +2024,12 @@
     html += reportSectionTable("ACONDICIONAMIENTO TÉRMICO", checklistRowsForReport("termico", SECTIONS[3].items));
 
     var n = state.networking;
+    var fibraColor = FIBRA_COLORS[n.fibra] || "#999";
+    var fibraRow = '<tr><td class="lbl">Fibra que pertenece</td><td colspan="2">'
+      + (n.fibra
+          ? '<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:11px;height:11px;border-radius:50%;background:'+fibraColor+';display:inline-block;"></span>'+esc(n.fibra)+'</span>'
+          : "—")
+      + '</td></tr>';
     var netRows = '';
     n.devices.forEach(function(d, i){
       var warnClass = d.warning === "Sí" ? "estado-cell MAL" : (d.warning === "No" ? "estado-cell BIEN" : "estado-cell");
@@ -2021,6 +2044,7 @@
     html += ''
       + '<table class="rtable">'
       + '<tr><th class="hd" colspan="3">NETWORKING</th></tr>'
+      + fibraRow
       + '<tr><td class="lbl">DISPOSITIVO / MÉTRICA</td><td class="lbl">ESTADO</td><td class="lbl">CHECK</td></tr>'
       + netRows
       + '</table>';
@@ -2328,6 +2352,26 @@
     return map;
   }
 
+  function collectRacksByFibra(reports){
+    var map = {};
+    reports.forEach(function(r){
+      var f = (r.networking && r.networking.fibra) || "Sin fibra asignada";
+      map[f] = (map[f] || 0) + 1;
+    });
+    return map;
+  }
+
+  // Solo los racks que necesitaron reparación (estado MAL) dentro del período.
+  function collectRepairedRacksByFibra(reports){
+    var map = {};
+    reports.forEach(function(r){
+      if(rackOverallStatus(r) !== "MAL") return;
+      var f = (r.networking && r.networking.fibra) || "Sin fibra asignada";
+      map[f] = (map[f] || 0) + 1;
+    });
+    return map;
+  }
+
   // Racks visitados 2 o más veces dentro del período: se destacan como
   // seguimiento activo (evidencia de que se volvió a controlar la mejora).
   function collectRepeatedRacks(reports){
@@ -2368,9 +2412,9 @@
 
   var PIE_PALETTE = ["#2B6CB0", "#7C3AED", "#0EA5A5", "#B9790B", "#C6362E", "#6B7280"];
 
-  function renderPieChart(dataObj){
+  function renderPieChart(dataObj, colorMap, emptyMsg){
     var keys = Object.keys(dataObj);
-    if(!keys.length) return '<div class="exec-empty-note">No hay puntos de seguimiento para graficar.</div>';
+    if(!keys.length) return '<div class="exec-empty-note">'+esc(emptyMsg || "No hay datos para graficar.")+'</div>';
     var total = keys.reduce(function(sum, k){ return sum + dataObj[k]; }, 0);
     var cum = 0;
     var stops = [];
@@ -2378,7 +2422,7 @@
     keys.forEach(function(k, i){
       var val = dataObj[k];
       var pct = (val / total) * 100;
-      var color = PIE_PALETTE[i % PIE_PALETTE.length];
+      var color = (colorMap && colorMap[k]) || PIE_PALETTE[i % PIE_PALETTE.length];
       stops.push(color + " " + cum.toFixed(2) + "% " + (cum + pct).toFixed(2) + "%");
       legend += '<div class="exec-legend-row"><span class="exec-legend-dot" style="background:'+color+';"></span>'+esc(k)+' — <b>'+val+'</b> ('+Math.round(pct)+'%)</div>';
       cum += pct;
@@ -2479,6 +2523,8 @@
     var racksByTecnico = collectRacksByTecnico(reports);
     var inconvenientesPorArea = collectInconvenientesByArea(inconvenientes);
     var repeatedRacks = collectRepeatedRacks(reports);
+    var racksByFibra = collectRacksByFibra(reports);
+    var repairedRacksByFibra = collectRepairedRacksByFibra(reports);
 
     var html = '<div class="sheet">';
 
@@ -2541,6 +2587,16 @@
       + '<span class="exec-bar-label">'+ESTADO_PLAIN.MAL+'</span>'
       + '<div class="exec-bar-track"><div class="exec-bar-fill MAL" style="width:'+Math.round((rackStatusCounts.MAL / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
       + '<span class="exec-bar-value">'+rackStatusCounts.MAL+'</span>'
+    + '</div>';
+
+    html += '<div class="exec-section-title">Racks por tipo de fibra</div>';
+    html += '<div class="exec-dual-chart">'
+      + '<div class="exec-dual-col"><div class="exec-subhead">Total de racks revisados</div>'
+        + renderPieChart(racksByFibra, FIBRA_COLORS, "No hay racks con fibra asignada.")
+      + '</div>'
+      + '<div class="exec-dual-col"><div class="exec-subhead">Racks que se repararon</div>'
+        + renderPieChart(repairedRacksByFibra, FIBRA_COLORS, "Ningún rack necesitó reparación en este período. 🎉")
+      + '</div>'
     + '</div>';
 
     html += '<div class="exec-section-title">Mejoras y tareas realizadas</div>';
