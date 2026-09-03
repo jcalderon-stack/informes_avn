@@ -9,6 +9,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <style>
   :root{
     --ink:#0A0A0A;
@@ -830,8 +833,8 @@
 
   <div class="modal-overlay" id="settings-modal">
     <div class="modal-box">
-      <h3>Configuración del backend</h3>
-      <div class="modal-sub">Esta app funciona sola en tu dominio y necesita un backend para guardar todo: login, informes, correos autorizados y el guardado de PDF en Drive. Pegá acá la URL del Google Apps Script (pestaña "Implementar → Aplicación web") para probarla ahora.</div>
+      <h3>Configuración — PDF y respaldo en Drive</h3>
+      <div class="modal-sub">Esta URL es solo para generar el PDF y guardarlo en Google Drive (Apps Script). Los relevamientos, el login y los correos autorizados ahora se guardan en Firebase, que se configura aparte (constante <strong>FIREBASE_CONFIG</strong> en el código). Pegá acá la URL del Google Apps Script (pestaña "Implementar → Aplicación web") para probarla ahora.</div>
       <div class="modal-warn">Esto es solo para <strong>esta sesión del navegador</strong>. Para que funcione siempre, para todos los usuarios, pedile a quien mantiene el código que la pegue en la constante <strong>BACKEND_URL</strong> al principio del archivo antes de publicar el sitio.</div>
       <div class="field">
         <label>URL del Apps Script (termina en /exec)</label>
@@ -1066,7 +1069,7 @@
   // (Implementar → Administrar implementaciones → termina en /exec).
   // Sin esto, nada se guarda: ni login, ni informes, ni configuración.
   // ─────────────────────────────────────────────────────────────────
-  var BACKEND_URL = "https://script.google.com/macros/s/AKfycby-E8D2X7GQ6GARlL0U1gAoUgYv0YRBwtW7lCR52pAQj6VmrJrbb0sqjhlV9O5Ip0eS/exec";
+  var BACKEND_URL = "https://script.google.com/macros/s/AKfycbw_3kb7G6Qo3E2xr6a9QexvTlMyHiB6lBpJxwod0HhjllNdxRCusPZ8HufE2rp5EBlE/exec";
 
   // Override de sesión (para probar una URL sin editar el código todavía).
   // No se guarda entre visitas — para producción, completá BACKEND_URL arriba.
@@ -1102,66 +1105,136 @@
     });
   }
 
-  function backendConfigGet(key, fallback){
-    if(!backendAvailable()) return Promise.resolve(fallback);
-    return backendCall("configGet", { key: key }).then(function(res){
-      return (res && res.ok && res.value !== undefined && res.value !== "") ? res.value : fallback;
-    }).catch(function(e){ console.error(e); return fallback; });
-  }
-  function backendConfigSet(key, value){
-    if(!backendAvailable()) return Promise.resolve(null);
-    return backendCall("configSet", { key: key, value: value }).catch(function(e){ console.error(e); return null; });
-  }
-  // Fetches every config value (allowedEmails, adminPasscode, googleClientId,
-  // trackingSheetUrl) in a single backend round-trip instead of one per key —
-  // meaningfully faster since each call to Apps Script has its own latency.
-  function backendConfigGetAll(){
-    if(!backendAvailable()) return Promise.resolve({});
-    return backendCall("configGetAll", {}).then(function(res){
-      return (res && res.ok && res.config) ? res.config : {};
-    }).catch(function(e){ console.error(e); return {}; });
-  }
-
-  // Reports live centrally in the backend: every technician/admin using this app needs to
-  // see everyone else's relevamientos (for the team tracking + client executive report).
-  // `listReports` returns a LIGHT version (no photos) for speed — use
-  // `fetchReportById` to get the full report (with photos) for a single one.
-  function saveReport(r){
-    if(!backendAvailable()) return Promise.resolve(null);
-    return backendCall("reportSave", { id: r.id, json: JSON.stringify(r) }).catch(function(e){
-      console.error("save error", e); return null;
-    });
-  }
-  function deleteReportStorage(id){
-    if(!backendAvailable()) return Promise.resolve(null);
-    return backendCall("reportDelete", { id: id }).catch(function(e){ console.error(e); return null; });
-  }
-  function listReports(){
-    if(!backendAvailable()) return Promise.resolve([]);
-    return backendCall("reportsList", {}).then(function(res){
-      if(!res || !res.ok || !res.reports) return [];
-      return res.reports
-        .map(function(r){ try { return migrateReport(r); } catch(e){ return null; } })
-        .filter(Boolean);
-    }).then(function(arr){
-      return arr.sort(function(a, b){ return (b.createdAt || 0) - (a.createdAt || 0); });
-    }).catch(function(e){ console.error(e); return []; });
-  }
-  function fetchReportById(id){
-    if(!backendAvailable()) return Promise.resolve(null);
-    return backendCall("reportGet", { id: id }).then(function(res){
-      if(!res || !res.ok || !res.report) return null;
-      try { return migrateReport(res.report); } catch(e){ return null; }
-    }).catch(function(e){ console.error(e); return null; });
-  }
-
   function loadWebhookUrl(){ return Promise.resolve(getBackendUrl()); }
   function persistWebhookUrl(url){
     runtimeBackendUrlOverride = url;
     return Promise.resolve(null);
   }
-  function loadTrackingSheetUrl(){ return backendConfigGet("trackingSheetUrl", ""); }
-  function persistTrackingSheetUrl(url){ return backendConfigSet("trackingSheetUrl", url); }
+
+  /* ============ DATOS (Firebase / Firestore + Storage) ============ */
+  // ─────────────────────────────────────────────────────────────────
+  // ANTES DE PUBLICAR ESTE SITIO: pegá acá la config de tu proyecto de
+  // Firebase (Firebase Console → ⚙ Configuración del proyecto → tus apps →
+  // "Config"). Es el objeto público del SDK, no una clave secreta.
+  // Sin esto, los relevamientos y la configuración no se guardan.
+  // El PDF y el respaldo en Drive siguen usando el Backend de arriba.
+  // ─────────────────────────────────────────────────────────────────
+  var FIREBASE_CONFIG = null;
+  /* Ejemplo:
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAjYSmHPuHVh87_KYFasZ7aIec9bVEIEvw",
+  authDomain: "appanv-35c48.firebaseapp.com",
+  projectId: "appanv-35c48",
+  storageBucket: "appanv-35c48.firebasestorage.app",
+  messagingSenderId: "532507421795",
+  appId: "1:532507421795:web:095b0b74d25221bc255c56",
+  measurementId: "G-ZQV90MX2CZ"
+  };
+  */
+
+  var fbDb = null;
+  var fbStorage = null;
+
+  function initFirebase(){
+    if(!FIREBASE_CONFIG || typeof firebase === "undefined") return;
+    try {
+      firebase.initializeApp(FIREBASE_CONFIG);
+      fbDb = firebase.firestore();
+      fbStorage = firebase.storage();
+    } catch(e){
+      console.error("No se pudo inicializar Firebase", e);
+    }
+  }
+
+  function dbAvailable(){ return !!fbDb; }
+
+  // Convierte un data URI (foto recién sacada, todavía no subida) a Blob.
+  function dataURItoBlob(dataURI){
+    var parts = dataURI.split(",");
+    var mimeMatch = parts[0].match(/data:([^;]+);/);
+    var mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    var byteString = atob(parts[1]);
+    var bytes = new Uint8Array(byteString.length);
+    for(var i = 0; i < byteString.length; i++){ bytes[i] = byteString.charCodeAt(i); }
+    return new Blob([bytes], { type: mime });
+  }
+
+  // Sube una foto a Firebase Storage si todavía es un data URI local; si ya
+  // es una URL (foto subida en un guardado anterior), no hace nada.
+  function uploadPhotoIfNeeded(reportId, group, dataUri, idx){
+    if(!/^data:/.test(dataUri)) return Promise.resolve(dataUri);
+    var blob = dataURItoBlob(dataUri);
+    var path = "reports/" + reportId + "/" + group + "/" + Date.now() + "_" + idx + ".jpg";
+    return fbStorage.ref().child(path).put(blob).then(function(snap){
+      return snap.ref.getDownloadURL();
+    });
+  }
+
+  function uploadAllPhotos(r){
+    if(!fbStorage) return Promise.resolve(r);
+    var antes = (r.fotosAntes || []).map(function(uri, i){ return uploadPhotoIfNeeded(r.id, "antes", uri, i); });
+    var despues = (r.fotosDespues || []).map(function(uri, i){ return uploadPhotoIfNeeded(r.id, "despues", uri, i); });
+    return Promise.all([Promise.all(antes), Promise.all(despues)]).then(function(res){
+      r.fotosAntes = res[0];
+      r.fotosDespues = res[1];
+      return r;
+    });
+  }
+
+  // Reports live centrally in Firestore: every technician/admin using this app
+  // needs to see everyone else's relevamientos (for the team tracking + client
+  // executive report). Photos live in Firebase Storage; the Firestore document
+  // only keeps their download URLs, which is what keeps documents small and
+  // reads/writes fast.
+  function saveReport(r){
+    if(!dbAvailable()) return Promise.resolve(null);
+    return uploadAllPhotos(r).then(function(rWithUrls){
+      return fbDb.collection("reports").doc(rWithUrls.id).set(rWithUrls);
+    }).catch(function(e){ console.error("save error", e); return null; });
+  }
+
+  function deleteReportStorage(id){
+    if(!dbAvailable()) return Promise.resolve(null);
+    return fbDb.collection("reports").doc(id).delete().then(function(){
+      if(!fbStorage) return;
+      // Best-effort: borra las fotos asociadas. Si falla, no rompe el flujo.
+      return fbStorage.ref().child("reports/" + id).listAll().then(function(res){
+        return Promise.all(res.items.map(function(item){ return item.delete().catch(function(){}); }));
+      }).catch(function(){});
+    }).catch(function(e){ console.error(e); return null; });
+  }
+
+  function listReports(){
+    if(!dbAvailable()) return Promise.resolve([]);
+    return fbDb.collection("reports").get().then(function(snap){
+      var arr = [];
+      snap.forEach(function(doc){
+        try { arr.push(migrateReport(doc.data())); } catch(e){}
+      });
+      return arr.sort(function(a, b){ return (b.createdAt || 0) - (a.createdAt || 0); });
+    }).catch(function(e){ console.error(e); return []; });
+  }
+
+  function fetchReportById(id){
+    if(!dbAvailable()) return Promise.resolve(null);
+    return fbDb.collection("reports").doc(id).get().then(function(doc){
+      if(!doc.exists) return null;
+      try { return migrateReport(doc.data()); } catch(e){ return null; }
+    }).catch(function(e){ console.error(e); return null; });
+  }
+
+  var CONFIG_DOC = function(){ return fbDb.collection("config").doc("app"); };
+
+  function loadTrackingSheetUrl(){
+    if(!dbAvailable()) return Promise.resolve("");
+    return CONFIG_DOC().get().then(function(doc){
+      return (doc.exists && doc.data().trackingSheetUrl) || "";
+    }).catch(function(){ return ""; });
+  }
+  function persistTrackingSheetUrl(url){
+    if(!dbAvailable()) return Promise.resolve(null);
+    return CONFIG_DOC().set({ trackingSheetUrl: url }, { merge: true }).catch(function(e){ console.error(e); return null; });
+  }
 
   function normalizeAllowedEmails(raw){
     if(!Array.isArray(raw)) return [];
@@ -1173,9 +1246,18 @@
     }).filter(function(x){ return !!x.email; });
   }
 
-  function persistAllowedEmails(arr){ return backendConfigSet("allowedEmails", JSON.stringify(arr)); }
-  function persistAdminPasscode(pass){ return backendConfigSet("adminPasscode", pass); }
-  function persistGoogleClientId(id){ return backendConfigSet("googleClientId", id); }
+  function persistAllowedEmails(arr){
+    if(!dbAvailable()) return Promise.resolve(null);
+    return CONFIG_DOC().set({ allowedEmails: arr }, { merge: true }).catch(function(e){ console.error(e); return null; });
+  }
+  function persistAdminPasscode(pass){
+    if(!dbAvailable()) return Promise.resolve(null);
+    return CONFIG_DOC().set({ adminPasscode: pass }, { merge: true }).catch(function(e){ console.error(e); return null; });
+  }
+  function persistGoogleClientId(id){
+    if(!dbAvailable()) return Promise.resolve(null);
+    return CONFIG_DOC().set({ googleClientId: id }, { merge: true }).catch(function(e){ console.error(e); return null; });
+  }
   // El último correo usado no se persiste (no hay browser storage fuera de este backend);
   // el campo de login simplemente arranca vacío en cada visita.
   function loadLastEmail(){ return Promise.resolve(""); }
@@ -2700,13 +2782,22 @@
   }
 
   function loadAuthConfig(){
-    return backendConfigGetAll().then(function(cfg){
-      var rawEmails = [];
-      try { rawEmails = JSON.parse(cfg.allowedEmails || "[]"); } catch(e){ rawEmails = []; }
-      allowedEmails = normalizeAllowedEmails(rawEmails);
+    if(!dbAvailable()){
+      allowedEmails = [];
+      adminPasscode = "";
+      googleClientId = "";
+      trackingSheetUrl = "";
+      return Promise.resolve();
+    }
+    return CONFIG_DOC().get().then(function(doc){
+      var cfg = doc.exists ? doc.data() : {};
+      allowedEmails = normalizeAllowedEmails(cfg.allowedEmails || []);
       adminPasscode = cfg.adminPasscode || "";
       googleClientId = cfg.googleClientId || "";
       trackingSheetUrl = cfg.trackingSheetUrl || "";
+    }).catch(function(e){
+      console.error("No se pudo cargar la configuración desde Firestore", e);
+      allowedEmails = []; adminPasscode = ""; googleClientId = ""; trackingSheetUrl = "";
     });
   }
 
@@ -2763,6 +2854,11 @@
 
   /* ============ INIT ============ */
   document.addEventListener("DOMContentLoaded", function(){
+    initFirebase();
+    if(!FIREBASE_CONFIG){
+      console.warn("FIREBASE_CONFIG no está configurado: los relevamientos y la configuración no se van a guardar. Ver instrucciones cerca del inicio del <script>.");
+    }
+
     syncStickyOffsets();
     window.addEventListener("resize", syncStickyOffsets);
     window.addEventListener("orientationchange", function(){ setTimeout(syncStickyOffsets, 300); });
