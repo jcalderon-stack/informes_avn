@@ -863,6 +863,18 @@
       </div>
     </div>
   </div>
+
+  <div class="modal-overlay" id="geo-modal">
+    <div class="modal-box">
+      <h3>📍 Ubicación automática</h3>
+      <div class="modal-sub">Detectamos que estás usando el celular. ¿Querés que completemos <strong>Latitud</strong> y <strong>Longitud</strong> automáticamente con la ubicación de tu teléfono? El navegador te va a pedir permiso de ubicación aparte.</div>
+      <div id="geo-status" class="modal-status"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline btn-sm" id="btn-geo-no">No, cargo manual</button>
+        <button class="btn btn-accent btn-sm" id="btn-geo-yes">Sí, usar mi ubicación</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -3017,6 +3029,54 @@
         }
       });
     });
+    maybeOfferGeolocation();
+  }
+
+  /* ============ UBICACIÓN AUTOMÁTICA (mobile) ============ */
+  function isMobileDevice(){
+    return /Android|iPhone|iPad|iPod|Mobile|webOS/i.test(navigator.userAgent || "");
+  }
+
+  function maybeOfferGeolocation(){
+    if(!isMobileDevice() || !navigator.geolocation) return;
+    var modal = $("#geo-modal");
+    var statusEl = $("#geo-status");
+    statusEl.textContent = "";
+    statusEl.className = "modal-status";
+    modal.classList.add("active");
+
+    function closeGeoModal(){ modal.classList.remove("active"); }
+
+    $("#btn-geo-no").onclick = function(){ closeGeoModal(); };
+
+    $("#btn-geo-yes").onclick = function(){
+      var btn = $("#btn-geo-yes");
+      btn.disabled = true;
+      statusEl.textContent = "Buscando tu ubicación…";
+      statusEl.className = "modal-status";
+      navigator.geolocation.getCurrentPosition(
+        function(pos){
+          var lat = pos.coords.latitude.toFixed(6);
+          var lng = pos.coords.longitude.toFixed(6);
+          state.control.latitud = lat;
+          state.control.longitud = lng;
+          var latInput = document.querySelector('[data-path="control.latitud"]');
+          var lngInput = document.querySelector('[data-path="control.longitud"]');
+          if(latInput) latInput.value = lat;
+          if(lngInput) lngInput.value = lng;
+          scheduleSave();
+          btn.disabled = false;
+          toast("Ubicación cargada ✓");
+          closeGeoModal();
+        },
+        function(err){
+          btn.disabled = false;
+          statusEl.textContent = "No se pudo obtener la ubicación (" + (err && err.message ? err.message : "permiso denegado") + "). Podés cargarla a mano.";
+          statusEl.className = "modal-status err";
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    };
   }
 
   function openEditById(id){
@@ -3077,6 +3137,9 @@
     $("#btn-close-settings").onclick = closeSettingsModal;
     $("#settings-modal").addEventListener("click", function(e){
       if(e.target.id === "settings-modal") closeSettingsModal();
+    });
+    $("#geo-modal").addEventListener("click", function(e){
+      if(e.target.id === "geo-modal") $("#geo-modal").classList.remove("active");
     });
     $("#btn-save-webhook").onclick = function(){
       var val = $("#webhook-input").value.trim();
