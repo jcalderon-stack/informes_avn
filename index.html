@@ -717,6 +717,11 @@
   .exec-list-item:last-child{border-bottom:none;}
   .exec-list-item .exec-rack-tag{font-weight:700;}
   .exec-empty-note{font-size:13px;color:var(--muted);font-style:italic;padding:6px 0;}
+  .exec-highlight{
+    background:var(--ok-bg);border:1px solid #BFE3CE;border-radius:5px;
+    padding:12px 14px;margin-bottom:14px;font-size:13.5px;line-height:1.55;color:#155C39;
+  }
+  .exec-highlight b{color:#0E4227;}
 
   .exec-pie-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap;margin-bottom:16px;}
   .exec-pie{width:150px;height:150px;border-radius:50%;flex:none;background:#EAEAEA;}
@@ -2243,6 +2248,19 @@
     return map;
   }
 
+  // Racks visitados 2 o más veces dentro del período: se destacan como
+  // seguimiento activo (evidencia de que se volvió a controlar la mejora).
+  function collectRepeatedRacks(reports){
+    var counts = {};
+    reports.forEach(function(r){
+      var name = r.control.nombreRack || "Rack sin nombre";
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    return Object.keys(counts)
+      .filter(function(k){ return counts[k] >= 2; })
+      .map(function(k){ return { rack: k, count: counts[k] }; });
+  }
+
   function collectInconvenientesByArea(inconvenientes){
     var map = {};
     inconvenientes.forEach(function(inc){
@@ -2365,9 +2383,6 @@
     execCurrentTo = toStr;
     execCurrentReports = reports;
 
-    var tecnicos = Array.from(new Set(reports.map(function(r){
-      return (r.responsable && r.responsable.nombre) || "";
-    }).filter(Boolean)));
     var totalFotos = reports.reduce(function(sum, r){
       var antesN = r.fotosAntesCount !== undefined ? r.fotosAntesCount : (r.fotosAntes ? r.fotosAntes.length : 0);
       var despuesN = r.fotosDespuesCount !== undefined ? r.fotosDespuesCount : (r.fotosDespues ? r.fotosDespues.length : 0);
@@ -2383,6 +2398,7 @@
     var rackStatusCounts = collectRackStatusCounts(reports);
     var racksByTecnico = collectRacksByTecnico(reports);
     var inconvenientesPorArea = collectInconvenientesByArea(inconvenientes);
+    var repeatedRacks = collectRepeatedRacks(reports);
 
     var html = '<div class="sheet">';
 
@@ -2402,11 +2418,11 @@
       : ('entre el <b>'+esc(fmtDateShort(fromStr))+'</b> y el <b>'+esc(fmtDateShort(toStr))+'</b>');
 
     html += '<div class="exec-intro">'
-      + 'Este informe técnico resume las tareas de mantenimiento e inspección realizadas '+periodoTexto+' '
+      + 'Este informe técnico resume el relevamiento, las mejoras implementadas y las tareas correctivas ejecutadas '+periodoTexto+' '
       + 'sobre la infraestructura de racks de comunicaciones del barrio, a cargo de PNC IT y Support QSS, bajo la supervisión de la Asociación Vecinal Nordelta (AVN). '
-      + 'Se relevaron <b>'+reports.length+'</b> '+(reports.length===1?"gabinete de telecomunicaciones":"gabinetes de telecomunicaciones")+', evaluando parámetros de acondicionamiento térmico, alimentación eléctrica, cableado estructurado y equipamiento de networking, con la participación de '
-      + (tecnicos.length ? esc(tecnicos.join(", ")) : "el equipo técnico")+'. '
-      + 'A continuación se detallan los hallazgos técnicos, las tareas correctivas y preventivas ejecutadas, y los puntos que requieren seguimiento.'
+      + 'Se relevaron <b>'+reports.length+'</b> '+(reports.length===1?"gabinete de telecomunicaciones":"gabinetes de telecomunicaciones")+', evaluando parámetros de acondicionamiento térmico, alimentación eléctrica, cableado estructurado y equipamiento de networking. '
+      + 'Se destacan las mejoras aplicadas sobre la infraestructura y las tareas correctivas resueltas durante el período, orientadas a sostener la disponibilidad y el buen funcionamiento del servicio. '
+      + 'A continuación se detallan los hallazgos técnicos, las mejoras realizadas y los puntos que requieren seguimiento.'
     + '</div>';
 
     html += '<div class="exec-stats-grid">'
@@ -2448,6 +2464,14 @@
     + '</div>';
 
     html += '<div class="exec-section-title">Mejoras y tareas realizadas</div>';
+    if(repeatedRacks.length){
+      var repeatedText = repeatedRacks.map(function(rr){
+        return '<b>'+esc(rr.rack)+'</b> ('+rr.count+' visitas)';
+      }).join(", ");
+      html += '<div class="exec-highlight">🔁 <b>Seguimiento activo detectado:</b> ' + repeatedText
+        + (repeatedRacks.length === 1 ? ' fue revisado' : ' fueron revisados') + ' más de una vez durante el período, '
+        + 'lo que refleja un proceso de mejora continua y control de las tareas realizadas.</div>';
+    }
     if(mejoras.length){
       mejoras.forEach(function(m){
         html += '<div class="exec-list-item"><span class="exec-rack-tag">'+esc(m.rack)+'</span> — '+esc(m.text)+'</div>';
@@ -2457,19 +2481,19 @@
     }
 
     html += '<div class="exec-section-title">Puntos que requieren seguimiento</div>';
-    html += renderPieChart(inconvenientesPorArea);
     if(inconvenientes.length){
-      html += '<div class="exec-subhead">Detalle</div>';
-      inconvenientes.forEach(function(inc){
-        var extra = inc.detail ? (" — " + esc(inc.detail)) : "";
-        html += '<div class="exec-list-item"><span class="exec-rack-tag">'+esc(inc.rack)+'</span> — '+esc(inc.item)+': <b>'+ESTADO_PLAIN[inc.estado]+'</b>'+extra+'</div>';
-      });
+      html += renderPieChart(inconvenientesPorArea);
     } else {
-      html += '<div class="exec-empty-note">No se encontraron inconvenientes en los racks revisados ese día. 🎉</div>';
+      html += '<div class="exec-empty-note">No se encontraron inconvenientes en los racks revisados durante el período. 🎉</div>';
     }
+    html += '<div class="exec-intro">'
+      + 'El seguimiento de estos puntos se realiza mediante inspecciones periódicas programadas por el equipo técnico de PNC IT y Support QSS. '
+      + 'Cada observación queda documentada y priorizada según su criticidad, y se resuelve en la siguiente visita programada o de forma correctiva '
+      + 'inmediata cuando la situación lo requiere. Los avances sobre estos puntos se reflejan en los próximos informes de mantenimiento.'
+    + '</div>';
 
     html += '<div class="exec-section-title">Racks revisados por técnico</div>';
-    html += renderCountBarChart(racksByTecnico, function(){ return "var(--ink)"; });
+    html += renderPieChart(racksByTecnico);
 
     html += '<div class="exec-section-title">Detalle por rack</div>';
     html += '<table class="rtable">'
@@ -2484,9 +2508,8 @@
     html += '</table>';
 
     html += '<div class="exec-footer">'
-      + 'Informe generado automáticamente por la app de Relevamiento de Racks · '
-      + esc(authName || authEmail) + ' · ' + esc(new Date().toLocaleString("es-AR")) + '<br>'
-      + 'Este documento resume información técnica en lenguaje simple para su lectura por cualquier persona. '
+      + 'Informe generado automáticamente por la app de Relevamiento de Racks · https://anv.supportqss.com/ '
+      + esc(new Date().toLocaleString("es-AR")) + '<br>'
       + 'Ante cualquier duda, contactar al equipo técnico de PNC IT / Support QSS.'
     + '</div>';
 
