@@ -302,6 +302,9 @@
   .field input:focus,.field select:focus,.field textarea:focus{
     outline:none;border-color:var(--ink);
   }
+  .field input[readonly]{
+    background:#F2F2F2;color:var(--muted);cursor:default;
+  }
   .field textarea{resize:vertical;min-height:80px;line-height:1.45;}
 
   .checklist{display:flex;flex-direction:column;}
@@ -907,12 +910,14 @@
   }
 
   function newReport(){
+    var today = new Date().toISOString().slice(0, 10);
+    var detectedTecnico = TECNICOS.indexOf(authTecnico) !== -1 ? authTecnico : "";
     return {
       id: "r_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7),
       createdAt: Date.now(),
       createdByEmail: authEmail || "",
       createdByName: authName || "",
-      control: {numero:"", fecha:"", nombreRack:"", etiquetaRack:"", ubicacion:"", latitud:"", longitud:"", empresa:""},
+      control: {numero:"", fecha:today, nombreRack:"", etiquetaRack:"", ubicacion:"", latitud:"", longitud:"", empresa:""},
       exterior: {items: emptyChecklist(SECTIONS[1].items)},
       interior: {items: emptyChecklist(SECTIONS[2].items)},
       termico: {items: emptyChecklist(SECTIONS[3].items), coolerCantidad:""},
@@ -922,7 +927,7 @@
       fotosAntes: [],
       fotosDespues: [],
       observaciones: "",
-      responsable: {nombre:"", fecha:""}
+      responsable: {nombre: detectedTecnico}
     };
   }
 
@@ -1014,6 +1019,7 @@
   var authEmail = "";
   var authName = "";
   var authRole = "";
+  var authTecnico = "";
   var allowedEmails = []; // array of {email, role}
   var adminPasscode = "";
   var googleClientId = "";
@@ -1249,6 +1255,28 @@
   }
 
   var CONFIG_DOC = function(){ return fbDb.collection("config").doc("app"); };
+  var COUNTERS_DOC = function(){ return fbDb.collection("config").doc("counters"); };
+
+  // Genera el próximo N° de control con formato QSSPNC-000-0001, de forma
+  // atómica (transacción de Firestore) para que dos técnicos creando un
+  // relevamiento al mismo tiempo nunca se pisen el número.
+  function getNextControlNumber(){
+    if(!dbAvailable()) return Promise.resolve("");
+    var ref = COUNTERS_DOC();
+    return fbDb.runTransaction(function(tx){
+      return tx.get(ref).then(function(doc){
+        var next = (doc.exists && doc.data().controlNumero) ? doc.data().controlNumero + 1 : 1;
+        tx.set(ref, { controlNumero: next }, { merge: true });
+        return next;
+      });
+    }).then(function(n){
+      var padded = ("0000" + n).slice(-4);
+      return "QSSPNC-000-" + padded;
+    }).catch(function(e){
+      console.error("No se pudo generar el N° de control", e);
+      return "";
+    });
+  }
 
   function loadTrackingSheetUrl(){
     if(!dbAvailable()) return Promise.resolve("");
@@ -1265,9 +1293,13 @@
     if(!Array.isArray(raw)) return [];
     return raw.map(function(item){
       if(typeof item === "string"){
-        return { email: item.toLowerCase(), role: "tecnico" };
+        return { email: item.toLowerCase(), role: "tecnico", tecnico: "" };
       }
-      return { email: (item.email || "").toLowerCase(), role: ROLES.indexOf(item.role) !== -1 ? item.role : "tecnico" };
+      return {
+        email: (item.email || "").toLowerCase(),
+        role: ROLES.indexOf(item.role) !== -1 ? item.role : "tecnico",
+        tecnico: item.tecnico || ""
+      };
     }).filter(function(x){ return !!x.email; });
   }
 
@@ -1571,10 +1603,12 @@
     var val = getPath(state, path);
     if(val === undefined) val = "";
     var transformAttr = opts.transform ? ' data-transform="'+opts.transform+'"' : "";
+    var readonlyAttr = opts.readonly ? ' readonly' : "";
+    var labelExtra = opts.readonly ? ' <span style="font-weight:400;color:var(--muted-2);">(automático)</span>' : "";
     if(type === "textarea"){
       return '<div class="field"><label>'+esc(label)+'</label><textarea data-path="'+path+'"'+transformAttr+' placeholder="'+esc(opts.placeholder||"")+'">'+esc(val)+'</textarea></div>';
     }
-    return '<div class="field"><label>'+esc(label)+'</label><input type="'+type+'" data-path="'+path+'"'+transformAttr+' value="'+esc(val)+'" placeholder="'+esc(opts.placeholder||"")+'"></div>';
+    return '<div class="field"><label>'+esc(label)+labelExtra+'</label><input type="'+type+'" data-path="'+path+'"'+transformAttr+readonlyAttr+' value="'+esc(val)+'" placeholder="'+esc(opts.placeholder||"")+'"></div>';
   }
 
   function selectFieldHTML(path, label, options){
@@ -1592,7 +1626,7 @@
 
   function renderControlSection(s){
     var b = '<div class="section-card" id="card-control">' + sectionHead(s) + '<div class="section-body">';
-    b += '<div class="field-row">' + fieldHTML("control.numero","N° de control",{placeholder:"Ej: 0012"}) + fieldHTML("control.fecha","Fecha",{type:"date"}) + '</div>';
+    b += '<div class="field-row">' + fieldHTML("control.numero","N° de control",{placeholder:"Generando…", readonly:true}) + fieldHTML("control.fecha","Fecha",{type:"date"}) + '</div>';
     b += '<div class="field-row">' + fieldHTML("control.nombreRack","Nombre de rack",{placeholder:"Ej: DOMO53", transform:"upperAlnum"}) + fieldHTML("control.etiquetaRack","Etiqueta de rack",{placeholder:"Ej: SW-DOMO53"}) + '</div>';
     b += '<div class="field-row single">' + fieldHTML("control.ubicacion","Ubicación",{placeholder:"Ej: Perímetro El Yacht"}) + '</div>';
     b += '<div class="field-row">' + fieldHTML("control.latitud","Latitud",{placeholder:"-34.385035"}) + fieldHTML("control.longitud","Longitud",{placeholder:"-58.653196"}) + '</div>';
@@ -1716,7 +1750,7 @@
 
   function renderResponsableSection(s){
     var b = '<div class="section-card" id="card-responsable">' + sectionHead(s) + '<div class="section-body">';
-    b += '<div class="field-row">' + selectFieldHTML("responsable.nombre","Técnico responsable",TECNICOS) + fieldHTML("responsable.fecha","Fecha",{type:"date"}) + '</div>';
+    b += '<div class="field-row single">' + selectFieldHTML("responsable.nombre","Técnico responsable",TECNICOS) + '</div>';
     b += '</div></div>';
     return b;
   }
@@ -1972,8 +2006,8 @@
     + '</table>';
 
     html += '<table class="rtable">'
-      + '<tr><th class="hd" style="width:70%">TÉCNICO RESPONSABLE</th><th class="hd">FECHA</th></tr>'
-      + '<tr><td>'+esc(state.responsable.nombre||"—")+'</td><td>'+esc(fmtDate(state.responsable.fecha)||"—")+'</td></tr>'
+      + '<tr><th class="hd" style="width:70%">TÉCNICO RESPONSABLE</th><th class="hd">FECHA DEL INFORME</th></tr>'
+      + '<tr><td>'+esc(state.responsable.nombre||"—")+'</td><td>'+esc(fmtDate(state.control.fecha)||"—")+'</td></tr>'
     + '</table>';
 
     html += '</div>';
@@ -2598,23 +2632,24 @@
       return;
     }
     if(allowedEmails.length === 0){
-      proceedLogin(email, name, "admin");
+      proceedLogin(email, name, "admin", "");
       toast("No hay accesos configurados todavía: entraste como Administrador. Andá a Administración para agregar al resto del equipo.");
       return;
     }
     var entry = allowedEmails.find(function(x){ return x.email === email; });
     if(entry){
-      proceedLogin(email, name, entry.role);
+      proceedLogin(email, name, entry.role, entry.tecnico || "");
     } else {
       showLoginError("El correo " + email + " no está autorizado. Pedile al administrador que lo agregue en Administración.");
     }
   }
 
-  function proceedLogin(email, name, role){
+  function proceedLogin(email, name, role, tecnico){
     authenticated = true;
     authEmail = email;
     authName = name || email;
     authRole = role || "cliente";
+    authTecnico = tecnico || "";
     persistLastEmail(email);
     goHome();
   }
@@ -2624,6 +2659,7 @@
     authEmail = "";
     authName = "";
     authRole = "";
+    authTecnico = "";
     switchView("login");
     renderLoginView();
   }
@@ -2654,6 +2690,14 @@
     }).join("");
   }
 
+  function tecnicoOptionsHTML(selected){
+    var opts = '<option value=""'+(selected?"":" selected")+'>Sin técnico</option>';
+    opts += TECNICOS.map(function(t){
+      return '<option value="'+esc(t)+'"'+(t===selected?" selected":"")+'>'+esc(t)+'</option>';
+    }).join("");
+    return opts;
+  }
+
   function emailListHTML(){
     if(!allowedEmails.length){
       return '<div class="admin-empty">No hay correos configurados todavía (acceso sin restricción: cualquiera que inicie sesión entra como Administrador).</div>';
@@ -2662,6 +2706,7 @@
       return '<div class="email-chip">'
         + '<span class="email-chip-email">'+esc(e.email)+'</span>'
         + '<select class="email-role-select" data-email="'+esc(e.email)+'">'+roleOptionsHTML(e.role)+'</select>'
+        + '<select class="email-tecnico-select" data-email="'+esc(e.email)+'">'+tecnicoOptionsHTML(e.tecnico)+'</select>'
         + '<button type="button" class="btn-remove-email" data-email="'+esc(e.email)+'">Eliminar</button>'
       + '</div>';
     }).join("");
@@ -2731,7 +2776,7 @@
       + '<div class="admin-section">'
         + '<h3>Correos autorizados</h3>'
         + '<div class="sub">Solo estas cuentas de Gmail / Google Workspace van a poder iniciar sesión. Con la lista vacía, cualquier correo puede entrar.</div>'
-        + '<div class="email-add-row"><input type="text" id="admin-email-input" placeholder="nombre@gmail.com"><select id="admin-email-role">'+roleOptionsHTML("tecnico")+'</select><button class="btn btn-accent btn-sm" id="btn-add-email">Agregar</button></div>'
+        + '<div class="email-add-row"><input type="text" id="admin-email-input" placeholder="nombre@gmail.com"><select id="admin-email-role">'+roleOptionsHTML("tecnico")+'</select><select id="admin-email-tecnico">'+tecnicoOptionsHTML("")+'</select><button class="btn btn-accent btn-sm" id="btn-add-email">Agregar</button></div>'
         + '<div class="email-chip-list" id="admin-email-list">' + emailListHTML() + '</div>'
       + '</div>'
       + '<div class="admin-section">'
@@ -2758,14 +2803,17 @@
     $("#btn-add-email").onclick = function(){
       var input = $("#admin-email-input");
       var roleSelect = $("#admin-email-role");
+      var tecnicoSelect = $("#admin-email-tecnico");
       var val = input.value.trim().toLowerCase();
       var role = roleSelect.value;
+      var tecnico = tecnicoSelect.value;
       if(!val || val.indexOf("@") === -1){ toast("Ingresá un correo válido"); return; }
       var existing = allowedEmails.find(function(e){ return e.email === val; });
       if(existing){
         existing.role = role;
+        existing.tecnico = tecnico;
       } else {
-        allowedEmails.push({ email: val, role: role });
+        allowedEmails.push({ email: val, role: role, tecnico: tecnico });
       }
       persistAllowedEmails(allowedEmails);
       input.value = "";
@@ -2807,6 +2855,16 @@
           entry.role = sel.value;
           persistAllowedEmails(allowedEmails);
           toast("Rol de " + entry.email + " actualizado a " + ROLE_LABELS[entry.role]);
+        }
+      };
+    });
+    $all(".email-tecnico-select").forEach(function(sel){
+      sel.onchange = function(){
+        var entry = allowedEmails.find(function(e){ return e.email === sel.dataset.email; });
+        if(entry){
+          entry.tecnico = sel.value;
+          persistAllowedEmails(allowedEmails);
+          toast("Técnico asociado a " + entry.email + " actualizado");
         }
       };
     });
@@ -2855,10 +2913,18 @@
     state = newReport();
     switchView("form");
     renderForm();
-    saveReport(state).then(function(res){
-      if(!res || !res.ok){
-        toast("No se pudo guardar el relevamiento nuevo: " + (res && res.error ? res.error : "error desconocido"));
+    getNextControlNumber().then(function(numero){
+      if(numero){
+        state.control.numero = numero;
+        var input = document.querySelector('[data-path="control.numero"]');
+        if(input) input.value = numero;
+        renderStepper();
       }
+      saveReport(state).then(function(res){
+        if(!res || !res.ok){
+          toast("No se pudo guardar el relevamiento nuevo: " + (res && res.error ? res.error : "error desconocido"));
+        }
+      });
     });
   }
 
