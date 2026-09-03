@@ -1066,7 +1066,7 @@
   // (Implementar → Administrar implementaciones → termina en /exec).
   // Sin esto, nada se guarda: ni login, ni informes, ni configuración.
   // ─────────────────────────────────────────────────────────────────
-  var BACKEND_URL = "https://script.google.com/macros/s/AKfycby-E8D2X7GQ6GARlL0U1gAoUgYv0YRBwtW7lCR52pAQj6VmrJrbb0sqjhlV9O5Ip0eS/exec";
+  var BACKEND_URL = "ttps://script.google.com/macros/s/AKfycby-E8D2X7GQ6GARlL0U1gAoUgYv0YRBwtW7lCR52pAQj6VmrJrbb0sqjhlV9O5Ip0eS/exec";
 
   // Override de sesión (para probar una URL sin editar el código todavía).
   // No se guarda entre visitas — para producción, completá BACKEND_URL arriba.
@@ -1990,8 +1990,12 @@
     renderExecutiveSetup();
   }
 
-  function reportsForDate(dateStr){
-    return reportsCache.filter(function(r){ return r.control && r.control.fecha === dateStr; });
+  function reportsInRange(startDate, endDate){
+    return reportsCache.filter(function(r){
+      var f = r.control && r.control.fecha;
+      if(!f) return false;
+      return f >= startDate && f <= endDate;
+    });
   }
 
   function rackOverallStatus(r){
@@ -2144,8 +2148,11 @@
     el.innerHTML = ''
       + '<div class="exec-setup-box">'
         + '<h1>Informe Entregable al Cliente</h1>'
-        + '<div class="sub">Elegí una fecha para generar un informe ejecutivo, en lenguaje simple, con los relevamientos cargados ese día.</div>'
-        + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Fecha</label><input type="date" id="exec-date-input" value="'+today+'"></div>'
+        + '<div class="sub">Elegí un período para generar un informe ejecutivo, en lenguaje simple, que resuma todos los relevamientos cargados en ese rango de fechas.</div>'
+        + '<div class="field-row">'
+          + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Desde</label><input type="date" id="exec-date-from" value="'+today+'"></div>'
+          + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Hasta</label><input type="date" id="exec-date-to" value="'+today+'"></div>'
+        + '</div>'
         + '<div class="exec-count-hint" id="exec-count-hint"></div>'
         + '<div style="display:flex;gap:8px;justify-content:center;">'
           + '<button class="btn btn-outline btn-sm" id="btn-exec-cancel">Volver</button>'
@@ -2154,22 +2161,29 @@
       + '</div>';
 
     function updateHint(){
-      var d = $("#exec-date-input").value;
-      var n = reportsForDate(d).length;
-      $("#exec-count-hint").textContent = d
-        ? (n + (n === 1 ? " relevamiento cargado para esa fecha." : " relevamientos cargados para esa fecha."))
-        : "";
+      var from = $("#exec-date-from").value;
+      var to = $("#exec-date-to").value;
+      if(!from || !to){ $("#exec-count-hint").textContent = ""; return; }
+      if(from > to){
+        $("#exec-count-hint").textContent = "La fecha 'Desde' no puede ser posterior a 'Hasta'.";
+        return;
+      }
+      var n = reportsInRange(from, to).length;
+      $("#exec-count-hint").textContent = n + (n === 1 ? " relevamiento cargado en ese período." : " relevamientos cargados en ese período.");
     }
     updateHint();
-    $("#exec-date-input").addEventListener("input", updateHint);
+    $("#exec-date-from").addEventListener("input", updateHint);
+    $("#exec-date-to").addEventListener("input", updateHint);
 
     $("#btn-exec-cancel").onclick = goHome;
     $("#btn-exec-generate").onclick = function(){
-      var d = $("#exec-date-input").value;
-      if(!d){ toast("Elegí una fecha"); return; }
-      var reports = reportsForDate(d);
-      if(!reports.length){ toast("No hay relevamientos cargados para esa fecha"); return; }
-      renderExecutiveReport(d, reports);
+      var from = $("#exec-date-from").value;
+      var to = $("#exec-date-to").value;
+      if(!from || !to){ toast("Elegí las dos fechas del período"); return; }
+      if(from > to){ toast("La fecha 'Desde' no puede ser posterior a 'Hasta'"); return; }
+      var reports = reportsInRange(from, to);
+      if(!reports.length){ toast("No hay relevamientos cargados en ese período"); return; }
+      renderExecutiveReport(from, to, reports);
     };
   }
 
@@ -2182,11 +2196,26 @@
     } catch(e){ return dateStr; }
   }
 
-  var execCurrentDate = "";
+  function fmtDateShort(dateStr){
+    if(!dateStr) return "";
+    var d = new Date(dateStr + "T00:00:00");
+    try {
+      return d.toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" });
+    } catch(e){ return dateStr; }
+  }
+
+  function fmtDateRangeLong(fromStr, toStr){
+    if(fromStr === toStr) return fmtDateLong(fromStr);
+    return fmtDateShort(fromStr) + " al " + fmtDateShort(toStr);
+  }
+
+  var execCurrentFrom = "";
+  var execCurrentTo = "";
   var execCurrentReports = [];
 
-  function renderExecutiveReport(dateStr, reports){
-    execCurrentDate = dateStr;
+  function renderExecutiveReport(fromStr, toStr, reports){
+    execCurrentFrom = fromStr;
+    execCurrentTo = toStr;
     execCurrentReports = reports;
 
     var tecnicos = Array.from(new Set(reports.map(function(r){
@@ -2218,11 +2247,15 @@
 
     html += '<div class="exec-title">'
       + '<h1>Informe Ejecutivo de Mantenimiento</h1>'
-      + '<div class="sub">'+esc(fmtDateLong(dateStr))+'</div>'
+      + '<div class="sub">'+esc(fmtDateRangeLong(fromStr, toStr))+'</div>'
     + '</div>';
 
+    var periodoTexto = (fromStr === toStr)
+      ? ('el <b>'+esc(fmtDateLong(fromStr))+'</b>')
+      : ('entre el <b>'+esc(fmtDateShort(fromStr))+'</b> y el <b>'+esc(fmtDateShort(toStr))+'</b>');
+
     html += '<div class="exec-intro">'
-      + 'Este informe técnico resume las tareas de mantenimiento e inspección realizadas el <b>'+esc(fmtDateLong(dateStr))+'</b> '
+      + 'Este informe técnico resume las tareas de mantenimiento e inspección realizadas '+periodoTexto+' '
       + 'sobre la infraestructura de racks de comunicaciones del barrio, a cargo de PNC IT y Support QSS, bajo la supervisión de la Asociación Vecinal Nordelta (AVN). '
       + 'Se relevaron <b>'+reports.length+'</b> '+(reports.length===1?"gabinete de telecomunicaciones":"gabinetes de telecomunicaciones")+', evaluando parámetros de acondicionamiento térmico, alimentación eléctrica, cableado estructurado y equipamiento de networking, con la participación de '
       + (tecnicos.length ? esc(tecnicos.join(", ")) : "el equipo técnico")+'. '
@@ -2327,16 +2360,18 @@
     $("#btn-exec-save-drive").onclick = saveExecutiveReportToDrive;
   }
 
-  function executiveFilename(dateStr){
-    return "Informe_Ejecutivo_" + slug(dateStr) + ".pdf";
+  function executiveFilename(fromStr, toStr){
+    return fromStr === toStr
+      ? ("Informe_Ejecutivo_" + slug(fromStr) + ".pdf")
+      : ("Informe_Ejecutivo_" + slug(fromStr) + "_a_" + slug(toStr) + ".pdf");
   }
 
-  function uploadExecutivePdfToDrive(base64, filename, dateStr){
+  function uploadExecutivePdfToDrive(base64, filename, fromStr, toStr){
     var payload = {
       type: "executive",
       filename: filename,
       pdfBase64: base64,
-      dateLabel: dateStr,
+      dateLabel: fromStr === toStr ? fromStr : (fromStr + " a " + toStr),
       usuario: authEmail || "",
       rol: authRole || ""
     };
@@ -2362,8 +2397,8 @@
       btn.textContent = "Subiendo a Drive…";
       var datauri = doc.output("datauristring");
       var base64 = datauri.split(",")[1];
-      var filename = executiveFilename(execCurrentDate);
-      return uploadExecutivePdfToDrive(base64, filename, execCurrentDate);
+      var filename = executiveFilename(execCurrentFrom, execCurrentTo);
+      return uploadExecutivePdfToDrive(base64, filename, execCurrentFrom, execCurrentTo);
     }).then(function(json){
       if(json && json.ok){
         toast("Informe ejecutivo guardado en Drive ✓");
