@@ -2081,9 +2081,12 @@
         margin: [margin, margin, margin, margin],
         width: pageW - margin * 2,
         windowWidth: sheetEl.scrollWidth,
-        // Escala entera (no fraccionaria): un valor como 0.72 provoca
-        // redondeo de subpíxel que hace que el texto se vea amontonado.
-        html2canvas: { scale: 2, useCORS: true }
+        // jsPDF ya calcula el ajuste de tamaño internamente a partir de
+        // width/windowWidth. Cualquier "scale" distinto de 1 acá lo
+        // desajusta: valores menores dan texto borroso/amontonado y
+        // valores mayores hacen que el contenido se agrande y se corte
+        // en el borde de la página.
+        html2canvas: { scale: 1, useCORS: true }
       });
     }).then(function(){ return doc; });
   }
