@@ -118,13 +118,19 @@ function handlePdfUpload(data) {
 /* ============ CAPA DE DATOS DE LA APP (config + relevamientos) ============ */
 function handleAction(data) {
   switch (data.action) {
+    case "configGetAll":
+      return jsonResponse({ ok: true, config: getAllConfig() });
     case "configGet":
       return jsonResponse({ ok: true, value: getConfigValue(data.key) });
     case "configSet":
       setConfigValue(data.key, data.value);
       return jsonResponse({ ok: true });
     case "reportsList":
-      return jsonResponse({ ok: true, reports: listReportsFromDrive() });
+      return jsonResponse({ ok: true, reports: listReportIndex() });
+    case "reportGet":
+      var full = getFullReport(data.id);
+      if (!full) return jsonResponse({ ok: false, error: "Informe no encontrado" });
+      return jsonResponse({ ok: true, report: full });
     case "reportSave":
       saveReportToDrive(data.id, data.json);
       return jsonResponse({ ok: true });
@@ -152,10 +158,13 @@ function getConfigFile() {
   return folder.createFile(CONFIG_FILE_NAME, "{}", MimeType.PLAIN_TEXT);
 }
 
-function getConfigValue(key) {
+function getAllConfig() {
   var file = getConfigFile();
-  var obj = {};
-  try { obj = JSON.parse(file.getBlob().getDataAsString() || "{}"); } catch (e) { obj = {}; }
+  try { return JSON.parse(file.getBlob().getDataAsString() || "{}"); } catch (e) { return {}; }
+}
+
+function getConfigValue(key) {
+  var obj = getAllConfig();
   return obj[key] !== undefined ? obj[key] : "";
 }
 
@@ -167,19 +176,82 @@ function setConfigValue(key, value) {
   file.setContent(JSON.stringify(obj));
 }
 
-function listReportsFromDrive() {
+/**
+ * ÍNDICE LIVIANO: un solo archivo JSON con todos los relevamientos SIN las
+ * fotos (que son lo que más pesa). Listar el índice es una sola lectura de
+ * Drive en vez de tener que abrir y leer cada informe completo — esto es lo
+ * que hace que la lista de relevamientos y el informe ejecutivo carguen
+ * rápido, sin importar cuántos relevamientos haya cargados.
+ */
+var INDEX_FILE_NAME = "indice.json";
+
+function getIndexFile() {
+  var folder = getDataFolder();
+  var it = folder.getFilesByName(INDEX_FILE_NAME);
+  if (it.hasNext()) return it.next();
+  return folder.createFile(INDEX_FILE_NAME, "{}", MimeType.PLAIN_TEXT);
+}
+
+function readIndex() {
+  var file = getIndexFile();
+  try { return JSON.parse(file.getBlob().getDataAsString() || "{}"); } catch (e) { return {}; }
+}
+
+function writeIndex(idx) {
+  getIndexFile().setContent(JSON.stringify(idx));
+}
+
+// Quita las fotos (arrays de base64) de un relevamiento y deja solo la cantidad.
+function stripPhotos(report) {
+  var copy = JSON.parse(JSON.stringify(report));
+  var antesN = Array.isArray(copy.fotosAntes) ? copy.fotosAntes.length : (copy.fotosAntesCount || 0);
+  var despuesN = Array.isArray(copy.fotosDespues) ? copy.fotosDespues.length : (copy.fotosDespuesCount || 0);
+  delete copy.fotosAntes;
+  delete copy.fotosDespues;
+  copy.fotosAntesCount = antesN;
+  copy.fotosDespuesCount = despuesN;
+  return copy;
+}
+
+function listReportIndex() {
+  var idx = readIndex();
+  var ids = Object.keys(idx);
+  if (ids.length === 0) {
+    // Primera vez tras esta actualización (o índice vacío de verdad): lo
+    // reconstruimos leyendo la carpeta una única vez. Después de esto, las
+    // próximas listas ya salen del índice y son instantáneas.
+    idx = rebuildIndexFromFolder();
+    ids = Object.keys(idx);
+  }
+  return ids.map(function(id) { return idx[id]; });
+}
+
+function rebuildIndexFromFolder() {
   var folder = getReportsFolder();
   var files = folder.getFiles();
-  var out = [];
+  var idx = {};
   while (files.hasNext()) {
     var f = files.next();
     try {
-      out.push(JSON.parse(f.getBlob().getDataAsString()));
+      var full = JSON.parse(f.getBlob().getDataAsString());
+      if (full && full.id) idx[full.id] = stripPhotos(full);
     } catch (e) {
       // archivo corrupto o vacío: se ignora
     }
   }
-  return out;
+  writeIndex(idx);
+  return idx;
+}
+
+function getReportFileById(id) {
+  var it = getReportsFolder().getFilesByName(id + ".json");
+  return it.hasNext() ? it.next() : null;
+}
+
+function getFullReport(id) {
+  var file = getReportFileById(id);
+  if (!file) return null;
+  try { return JSON.parse(file.getBlob().getDataAsString()); } catch (e) { return null; }
 }
 
 function saveReportToDrive(id, jsonStr) {
@@ -191,12 +263,27 @@ function saveReportToDrive(id, jsonStr) {
   } else {
     folder.createFile(name, jsonStr, MimeType.PLAIN_TEXT);
   }
+
+  // Mantener el índice liviano al día en el mismo paso, sin viajes extra.
+  try {
+    var full = JSON.parse(jsonStr);
+    var idx = readIndex();
+    idx[id] = stripPhotos(full);
+    writeIndex(idx);
+  } catch (e) {
+    // si algo falla acá, el próximo listado reconstruye el índice solo
+  }
 }
 
 function deleteReportFromDrive(id) {
-  var folder = getReportsFolder();
-  var it = folder.getFilesByName(id + ".json");
-  if (it.hasNext()) it.next().setTrashed(true);
+  var file = getReportFileById(id);
+  if (file) file.setTrashed(true);
+
+  var idx = readIndex();
+  if (idx[id] !== undefined) {
+    delete idx[id];
+    writeIndex(idx);
+  }
 }
 
 /**

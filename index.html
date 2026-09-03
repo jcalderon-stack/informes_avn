@@ -1112,9 +1112,20 @@
     if(!backendAvailable()) return Promise.resolve(null);
     return backendCall("configSet", { key: key, value: value }).catch(function(e){ console.error(e); return null; });
   }
+  // Fetches every config value (allowedEmails, adminPasscode, googleClientId,
+  // trackingSheetUrl) in a single backend round-trip instead of one per key —
+  // meaningfully faster since each call to Apps Script has its own latency.
+  function backendConfigGetAll(){
+    if(!backendAvailable()) return Promise.resolve({});
+    return backendCall("configGetAll", {}).then(function(res){
+      return (res && res.ok && res.config) ? res.config : {};
+    }).catch(function(e){ console.error(e); return {}; });
+  }
 
   // Reports live centrally in the backend: every technician/admin using this app needs to
   // see everyone else's relevamientos (for the team tracking + client executive report).
+  // `listReports` returns a LIGHT version (no photos) for speed — use
+  // `fetchReportById` to get the full report (with photos) for a single one.
   function saveReport(r){
     if(!backendAvailable()) return Promise.resolve(null);
     return backendCall("reportSave", { id: r.id, json: JSON.stringify(r) }).catch(function(e){
@@ -1136,6 +1147,13 @@
       return arr.sort(function(a, b){ return (b.createdAt || 0) - (a.createdAt || 0); });
     }).catch(function(e){ console.error(e); return []; });
   }
+  function fetchReportById(id){
+    if(!backendAvailable()) return Promise.resolve(null);
+    return backendCall("reportGet", { id: id }).then(function(res){
+      if(!res || !res.ok || !res.report) return null;
+      try { return migrateReport(res.report); } catch(e){ return null; }
+    }).catch(function(e){ console.error(e); return null; });
+  }
 
   function loadWebhookUrl(){ return Promise.resolve(getBackendUrl()); }
   function persistWebhookUrl(url){
@@ -1155,15 +1173,8 @@
     }).filter(function(x){ return !!x.email; });
   }
 
-  function loadAllowedEmails(){
-    return backendConfigGet("allowedEmails", "[]").then(function(raw){
-      try { return normalizeAllowedEmails(JSON.parse(raw)); } catch(e){ return []; }
-    });
-  }
   function persistAllowedEmails(arr){ return backendConfigSet("allowedEmails", JSON.stringify(arr)); }
-  function loadAdminPasscode(){ return backendConfigGet("adminPasscode", ""); }
   function persistAdminPasscode(pass){ return backendConfigSet("adminPasscode", pass); }
-  function loadGoogleClientId(){ return backendConfigGet("googleClientId", ""); }
   function persistGoogleClientId(id){ return backendConfigSet("googleClientId", id); }
   // El último correo usado no se persiste (no hay browser storage fuera de este backend);
   // el campo de login simplemente arranca vacío en cada visita.
@@ -2182,7 +2193,9 @@
       return (r.responsable && r.responsable.nombre) || "";
     }).filter(Boolean)));
     var totalFotos = reports.reduce(function(sum, r){
-      return sum + (r.fotosAntes ? r.fotosAntes.length : 0) + (r.fotosDespues ? r.fotosDespues.length : 0);
+      var antesN = r.fotosAntesCount !== undefined ? r.fotosAntesCount : (r.fotosAntes ? r.fotosAntes.length : 0);
+      var despuesN = r.fotosDespuesCount !== undefined ? r.fotosDespuesCount : (r.fotosDespues ? r.fotosDespues.length : 0);
+      return sum + antesN + despuesN;
     }, 0);
     var conObservaciones = reports.filter(function(r){ return rackOverallStatus(r) !== "BIEN"; }).length;
     var sinNovedad = reports.length - conObservaciones;
@@ -2652,14 +2665,13 @@
   }
 
   function loadAuthConfig(){
-    return Promise.all([
-      loadAllowedEmails(),
-      loadAdminPasscode(),
-      loadGoogleClientId()
-    ]).then(function(results){
-      allowedEmails = results[0] || [];
-      adminPasscode = results[1] || "";
-      googleClientId = results[2] || "";
+    return backendConfigGetAll().then(function(cfg){
+      var rawEmails = [];
+      try { rawEmails = JSON.parse(cfg.allowedEmails || "[]"); } catch(e){ rawEmails = []; }
+      allowedEmails = normalizeAllowedEmails(rawEmails);
+      adminPasscode = cfg.adminPasscode || "";
+      googleClientId = cfg.googleClientId || "";
+      trackingSheetUrl = cfg.trackingSheetUrl || "";
     });
   }
 
@@ -2690,20 +2702,28 @@
   }
 
   function openEditById(id){
-    var r = reportsCache.find(function(x){ return x.id === id; });
-    if(!r) return;
-    if(!canEditReport(r)){ toast("No tenés permiso para editar este informe"); return; }
-    state = r;
-    switchView("form");
-    renderForm();
+    var light = reportsCache.find(function(x){ return x.id === id; });
+    if(!light) return;
+    if(!canEditReport(light)){ toast("No tenés permiso para editar este informe"); return; }
+    toast("Cargando relevamiento…");
+    fetchReportById(id).then(function(full){
+      if(!full){ toast("No se pudo cargar el relevamiento"); return; }
+      state = full;
+      switchView("form");
+      renderForm();
+    });
   }
 
   function openReportById(id){
-    var r = reportsCache.find(function(x){ return x.id === id; });
-    if(!r) return;
-    state = r;
-    switchView("report");
-    renderReport();
+    var light = reportsCache.find(function(x){ return x.id === id; });
+    if(!light) return;
+    toast("Cargando informe…");
+    fetchReportById(id).then(function(full){
+      if(!full){ toast("No se pudo cargar el informe"); return; }
+      state = full;
+      switchView("report");
+      renderReport();
+    });
   }
 
   /* ============ INIT ============ */
@@ -2775,11 +2795,6 @@
       if(e.key === "Enter"){ attemptLogin(this.value, this.value); }
     });
     $("#btn-open-admin").onclick = goAdmin;
-
-    loadTrackingSheetUrl().then(function(url){
-      trackingSheetUrl = url || "";
-      if(currentView === "home") renderHome();
-    });
 
     loadAuthConfig().then(function(){
       switchView("login");
