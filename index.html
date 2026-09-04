@@ -1073,8 +1073,16 @@
   function canDelete(){ return authRole === "admin"; }
   function canEditReport(r){
     if(authRole === "admin") return true;
-    if(authRole === "tecnico") return !!(r && r.createdByEmail && r.createdByEmail === authEmail);
+    if(authRole === "tecnico"){
+      var isOwner = !!(r && r.createdByEmail && r.createdByEmail === authEmail);
+      var lockedByDrive = !!(r && r.driveUpload);
+      return isOwner && !lockedByDrive;
+    }
     return false;
+  }
+  function editBlockedReason(r){
+    if(r && r.driveUpload) return "Este informe ya se guardó en Drive y no se puede modificar.";
+    return "No tenés permiso para editar este informe.";
   }
 
   /* ============ HELPERS ============ */
@@ -2092,7 +2100,8 @@
     }
     var when = new Date(d.at).toLocaleString("es-AR");
     var linkHtml = d.fileUrl ? ' — <a href="'+esc(d.fileUrl)+'" target="_blank" rel="noopener">ver en Drive</a>' : "";
-    el.innerHTML = '<span class="ok-dot"></span><span>Guardado en Drive el '+esc(when)+linkHtml+'</span>';
+    var lockNote = (authRole === "tecnico") ? ' · <span style="color:var(--muted-2);">🔒 Ya no se puede editar</span>' : "";
+    el.innerHTML = '<span class="ok-dot"></span><span>Guardado en Drive el '+esc(when)+linkHtml+lockNote+'</span>';
   }
 
   /* ============ SETTINGS MODAL ============ */
@@ -3138,7 +3147,7 @@
   function openEditById(id){
     var light = reportsCache.find(function(x){ return x.id === id; });
     if(!light) return;
-    if(!canEditReport(light)){ toast("No tenés permiso para editar este informe"); return; }
+    if(!canEditReport(light)){ toast(editBlockedReason(light)); return; }
     toast("Cargando relevamiento…");
     fetchReportById(id).then(function(full){
       if(!full){ toast("No se pudo cargar el relevamiento"); return; }
@@ -3183,7 +3192,7 @@
       });
     };
     $("#btn-edit-from-report").onclick = function(){
-      if(!canEditReport(state)){ toast("No tenés permiso para editar este informe"); return; }
+      if(!canEditReport(state)){ toast(editBlockedReason(state)); return; }
       switchView("form");
       renderForm();
     };
