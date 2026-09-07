@@ -302,6 +302,12 @@
   .field input:focus,.field select:focus,.field textarea:focus{
     outline:none;border-color:var(--ink);
   }
+  .fibra-select-row{display:flex;align-items:center;gap:10px;}
+  .fibra-select-row select{flex:1;}
+  .fibra-swatch{
+    width:34px;height:34px;border-radius:50%;flex:none;
+    border:2px solid #fff;box-shadow:0 0 0 1.5px var(--line);
+  }
   .field input[readonly]{
     background:#F2F2F2;color:var(--muted);cursor:default;
   }
@@ -917,6 +923,13 @@
     "RED 020 - Verde": "#1E8E5A",
     "RED 050 - Azul Celeste": "#3FB6D8",
     "RED 000 - Gris": "#8A8F98"
+  };
+  var FIBRA_EMOJI = {
+    "RED 040 - Roja": "🔴",
+    "RED 010 - Amarilla": "🟡",
+    "RED 020 - Verde": "🟢",
+    "RED 050 - Azul Celeste": "🔵",
+    "RED 000 - Gris": "⚪"
   };
   var MEJORAS_ITEMS = [
     "Cambio de Baterías UPS",
@@ -1669,6 +1682,26 @@
     return '<div class="field"><label>'+esc(label)+'</label><select data-path="'+path+'">'+opts+'</select></div>';
   }
 
+  // Select con un ícono de color adelante de cada opción (los <option> nativos
+  // no se pueden pintar de forma confiable en todos los celulares), más un
+  // punto de color grande al lado que se actualiza según lo elegido.
+  function fibraSelectHTML(path, label){
+    var val = getPath(state, path);
+    if(val === undefined) val = "";
+    var opts = '<option value="">Seleccioná…</option>' + FIBRA_OPTIONS.map(function(o){
+      var emoji = FIBRA_EMOJI[o] || "";
+      return '<option value="'+esc(o)+'"'+(o===val?" selected":"")+'>'+emoji+' '+esc(o)+'</option>';
+    }).join("");
+    var swatchColor = FIBRA_COLORS[val] || "transparent";
+    return '<div class="field">'
+      + '<label>'+esc(label)+'</label>'
+      + '<div class="fibra-select-row">'
+        + '<select data-path="'+path+'" id="fibra-select">'+opts+'</select>'
+        + '<span class="fibra-swatch" id="fibra-swatch" style="background:'+swatchColor+';"></span>'
+      + '</div>'
+    + '</div>';
+  }
+
   function sectionHead(s){
     return '<div class="section-head"><span class="num">'+s.num+'</span><h2>'+esc(s.title)+'</h2></div>';
   }
@@ -1729,7 +1762,7 @@
 
   function renderNetworkingSection(s){
     var b = '<div class="section-card" id="card-networking">' + sectionHead(s) + '<div class="section-body">';
-    b += '<div class="field-row single">' + selectFieldHTML("networking.fibra","Red que pertenece", FIBRA_OPTIONS) + '</div>';
+    b += '<div class="field-row single">' + fibraSelectHTML("networking.fibra","Red que pertenece") + '</div>';
     b += '<div id="networking-devices">' + networkingDevicesHTML() + '</div>';
     b += '<button type="button" class="photo-add-btn" id="btn-add-device">＋ Agregar dispositivo</button>';
     b += '</div></div>';
@@ -1883,6 +1916,10 @@
         if(portUsadosMatch){
           recalcPuertosLibres(parseInt(portUsadosMatch[1], 10));
         }
+        if(input.dataset.path === "networking.fibra"){
+          var swatch = $("#fibra-swatch");
+          if(swatch) swatch.style.background = FIBRA_COLORS[value] || "transparent";
+        }
         if(isCheckbox) renderStepper();
         scheduleSave();
       });
@@ -2012,7 +2049,7 @@
     var html = '<div class="sheet">';
 
     html += '<div class="sheet-titlebar">'
-      + '<div class="sheet-titlebar-left"><span class="avn-logo-box"><img src="'+LOGO_AVN+'" alt="AVN"></span><h1>🗄️ RELEVAMIENTO DE RACKS</h1></div>'
+      + '<div class="sheet-titlebar-left"><span class="avn-logo-box"><img src="'+LOGO_AVN+'" alt="AVN"></span><h1>⛓️ RELEVAMIENTO DE RACKS</h1></div>'
       + '<img class="qs-logo" src="'+LOGO_QUICKSOLUTIONS+'" alt="Quick Solution\'s Services">'
     + '</div>';
     html += '<div class="sheet-logos-row">'
@@ -2082,7 +2119,7 @@
     + '</table>';
 
     html += '<table class="rtable">'
-      + '<tr><th class="hd" style="width:70%">🧑‍🔧 TÉCNICO RESPONSABLE</th><th class="hd">FECHA DEL INFORME</th></tr>'
+      + '<tr><th class="hd" style="width:70%">👨🏻‍💻 TÉCNICO RESPONSABLE</th><th class="hd">FECHA DEL INFORME</th></tr>'
       + '<tr><td>'+esc(state.responsable.nombre||"—")+'</td><td>'+esc(fmtDate(state.control.fecha)||"—")+'</td></tr>'
     + '</table>';
 
@@ -2582,7 +2619,7 @@
       html += '<div class="exec-empty-note">No hay puntos de revisión cargados todavía.</div>';
     }
 
-    html += '<div class="exec-section-title">🗂️ Cantidad de racks por estado general</div>';
+    html += '<div class="exec-section-title">⛓️ Cantidad de racks por estado general</div>';
     html += '<div class="exec-bar-row">'
       + '<span class="exec-bar-label">'+ESTADO_PLAIN.BIEN+'</span>'
       + '<div class="exec-bar-track"><div class="exec-bar-fill BIEN" style="width:'+Math.round((rackStatusCounts.BIEN / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
@@ -2599,7 +2636,7 @@
       + '<span class="exec-bar-value">'+rackStatusCounts.MAL+'</span>'
     + '</div>';
 
-    html += '<div class="exec-section-title">🎨 Racks por tipo de red</div>';
+    html += '<div class="exec-section-title">⛓️ Racks por tipo de red</div>';
     html += '<div class="exec-dual-chart">'
       + '<div class="exec-dual-col"><div class="exec-subhead">Total de racks revisados</div>'
         + renderPieChart(racksByFibra, FIBRA_COLORS, "No hay racks con red asignada.")
@@ -2638,7 +2675,7 @@
       + 'inmediata cuando la situación lo requiere. Los avances sobre estos puntos se reflejan en los próximos informes de mantenimiento.'
     + '</div>';
 
-    html += '<div class="exec-section-title">🧑‍🔧 Racks revisados por técnico</div>';
+    html += '<div class="exec-section-title">🔧 Racks revisados por técnico</div>';
     html += renderPieChart(racksByTecnico);
 
     html += '<div class="exec-section-title">📋 Detalle por rack</div>';
