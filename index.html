@@ -910,12 +910,13 @@
   var EMPRESAS = ["PNC IT"];
   var SWITCH_MODELOS = ["Cisco 350", "Cisco SG550X", "Cisco Catalyst 1300"];
   var SWITCH_PORTS = ["24", "48"];
-  var FIBRA_OPTIONS = ["Fibra 50 - Roja", "Fibra 80 - Amarilla", "Fibra 100 - Verde", "Fibra 20 - Azul Celeste"];
+  var FIBRA_OPTIONS = ["RED 040 - Roja", "RED 010 - Amarilla", "RED 020 - Verde", "RED 050 - Azul Celeste", "RED 000 - Gris"];
   var FIBRA_COLORS = {
-    "Fibra 50 - Roja": "#C6362E",
-    "Fibra 80 - Amarilla": "#E0B21C",
-    "Fibra 100 - Verde": "#1E8E5A",
-    "Fibra 20 - Azul Celeste": "#3FB6D8"
+    "RED 040 - Roja": "#C6362E",
+    "RED 010 - Amarilla": "#E0B21C",
+    "RED 020 - Verde": "#1E8E5A",
+    "RED 050 - Azul Celeste": "#3FB6D8",
+    "RED 000 - Gris": "#8A8F98"
   };
   var MEJORAS_ITEMS = [
     "Cambio de Baterías UPS",
@@ -1728,7 +1729,7 @@
 
   function renderNetworkingSection(s){
     var b = '<div class="section-card" id="card-networking">' + sectionHead(s) + '<div class="section-body">';
-    b += '<div class="field-row single">' + selectFieldHTML("networking.fibra","Fibra que pertenece", FIBRA_OPTIONS) + '</div>';
+    b += '<div class="field-row single">' + selectFieldHTML("networking.fibra","Red que pertenece", FIBRA_OPTIONS) + '</div>';
     b += '<div id="networking-devices">' + networkingDevicesHTML() + '</div>';
     b += '<button type="button" class="photo-add-btn" id="btn-add-device">＋ Agregar dispositivo</button>';
     b += '</div></div>';
@@ -2033,7 +2034,7 @@
 
     var n = state.networking;
     var fibraColor = FIBRA_COLORS[n.fibra] || "#999";
-    var fibraRow = '<tr><td class="lbl">Fibra que pertenece</td><td colspan="2">'
+    var fibraRow = '<tr><td class="lbl">Red que pertenece</td><td colspan="2">'
       + (n.fibra
           ? '<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:11px;height:11px;border-radius:50%;background:'+fibraColor+';display:inline-block;"></span>'+esc(n.fibra)+'</span>'
           : "—")
@@ -2364,7 +2365,7 @@
   function collectRacksByFibra(reports){
     var map = {};
     reports.forEach(function(r){
-      var f = (r.networking && r.networking.fibra) || "Sin fibra asignada";
+      var f = (r.networking && r.networking.fibra) || "Sin red asignada";
       map[f] = (map[f] || 0) + 1;
     });
     return map;
@@ -2375,7 +2376,7 @@
     var map = {};
     reports.forEach(function(r){
       if(rackOverallStatus(r) !== "MAL") return;
-      var f = (r.networking && r.networking.fibra) || "Sin fibra asignada";
+      var f = (r.networking && r.networking.fibra) || "Sin red asignada";
       map[f] = (map[f] || 0) + 1;
     });
     return map;
@@ -2598,10 +2599,10 @@
       + '<span class="exec-bar-value">'+rackStatusCounts.MAL+'</span>'
     + '</div>';
 
-    html += '<div class="exec-section-title">Racks por tipo de fibra</div>';
+    html += '<div class="exec-section-title">Racks por tipo de red</div>';
     html += '<div class="exec-dual-chart">'
       + '<div class="exec-dual-col"><div class="exec-subhead">Total de racks revisados</div>'
-        + renderPieChart(racksByFibra, FIBRA_COLORS, "No hay racks con fibra asignada.")
+        + renderPieChart(racksByFibra, FIBRA_COLORS, "No hay racks con red asignada.")
       + '</div>'
       + '<div class="exec-dual-col"><div class="exec-subhead">Racks que se repararon</div>'
         + renderPieChart(repairedRacksByFibra, FIBRA_COLORS, "Ningún rack necesitó reparación en este período. 🎉")
