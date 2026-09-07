@@ -2002,7 +2002,7 @@
     }
     return ''
       + '<div class="rphotos-title" style="display:grid;grid-template-columns:1fr 1fr;">'
-        + '<div style="border-right:1px solid #444;padding:2px 0;">ANTES</div><div style="padding:2px 0;">DESPUÉS</div>'
+        + '<div style="border-right:1px solid #444;padding:2px 0;">📷 ANTES</div><div style="padding:2px 0;">✅ DESPUÉS</div>'
       + '</div>'
       + '<div class="rphoto-grid"><div class="rphoto-col">'+antesCells+'</div><div class="rphoto-col">'+despuesCells+'</div></div>';
   }
@@ -2012,7 +2012,7 @@
     var html = '<div class="sheet">';
 
     html += '<div class="sheet-titlebar">'
-      + '<div class="sheet-titlebar-left"><span class="avn-logo-box"><img src="'+LOGO_AVN+'" alt="AVN"></span><h1>RELEVAMIENTO DE RACKS</h1></div>'
+      + '<div class="sheet-titlebar-left"><span class="avn-logo-box"><img src="'+LOGO_AVN+'" alt="AVN"></span><h1>🗄️ RELEVAMIENTO DE RACKS</h1></div>'
       + '<img class="qs-logo" src="'+LOGO_QUICKSOLUTIONS+'" alt="Quick Solution\'s Services">'
     + '</div>';
     html += '<div class="sheet-logos-row">'
@@ -2021,16 +2021,16 @@
     + '</div>';
 
     html += '<table class="rtable">'
-      + '<tr><th class="hd" colspan="2">CONTROL DE RACK</th><td class="lbl" style="width:18%">N° CONTROL</td><td style="width:20%">'+esc(c.numero||"—")+'</td></tr>'
+      + '<tr><th class="hd" colspan="2">🏷️ CONTROL DE RACK</th><td class="lbl" style="width:18%">N° CONTROL</td><td style="width:20%">'+esc(c.numero||"—")+'</td></tr>'
       + '<tr><td class="lbl">NOMBRE DE RACK</td><td>'+esc(c.nombreRack||"—")+'</td><td class="lbl">FECHA</td><td>'+esc(fmtDate(c.fecha)||"—")+'</td></tr>'
       + '<tr><td class="lbl">ETIQUETA DE RACK</td><td colspan="3">'+esc(c.etiquetaRack||"—")+'</td></tr>'
       + '<tr><td class="lbl">UBICACIÓN</td><td>'+esc(c.ubicacion||"—")+'</td><td class="lbl">LATITUD</td><td>'+esc(c.latitud||"—")+'</td></tr>'
       + '<tr><td class="lbl">EMPRESA</td><td>'+esc(c.empresa||"—")+'</td><td class="lbl">LONGITUD</td><td>'+esc(c.longitud||"—")+'</td></tr>'
     + '</table>';
 
-    html += reportSectionTable("EXTERIOR", checklistRowsForReport("exterior", SECTIONS[1].items));
-    html += reportSectionTable("INTERIOR", checklistRowsForReport("interior", SECTIONS[2].items));
-    html += reportSectionTable("ACONDICIONAMIENTO TÉRMICO", checklistRowsForReport("termico", SECTIONS[3].items));
+    html += reportSectionTable("📦 EXTERIOR", checklistRowsForReport("exterior", SECTIONS[1].items));
+    html += reportSectionTable("🗄️ INTERIOR", checklistRowsForReport("interior", SECTIONS[2].items));
+    html += reportSectionTable("🌡️ ACONDICIONAMIENTO TÉRMICO", checklistRowsForReport("termico", SECTIONS[3].items));
 
     var n = state.networking;
     var fibraColor = FIBRA_COLORS[n.fibra] || "#999";
@@ -2052,13 +2052,13 @@
     });
     html += ''
       + '<table class="rtable">'
-      + '<tr><th class="hd" colspan="3">NETWORKING</th></tr>'
+      + '<tr><th class="hd" colspan="3">🌐 NETWORKING</th></tr>'
       + fibraRow
       + '<tr><td class="lbl">DISPOSITIVO / MÉTRICA</td><td class="lbl">ESTADO</td><td class="lbl">CHECK</td></tr>'
       + netRows
       + '</table>';
 
-    html += reportSectionTable("RED ELÉCTRICA", checklistRowsForReport("electrica", SECTIONS[5].items));
+    html += reportSectionTable("⚡ RED ELÉCTRICA", checklistRowsForReport("electrica", SECTIONS[5].items));
     html += reportGridTable([["MARCA (UPS)", state.electrica.marca],["MODELO (UPS)", state.electrica.modelo]]);
 
     var mejorasRows = MEJORAS_ITEMS.map(function(k){
@@ -2066,7 +2066,7 @@
       return '<tr><td>'+esc(k)+'</td><td class="estado-cell '+(done?"BIEN":"")+'" style="text-align:center;">'+(done?"✔ Realizado":"—")+'</td></tr>';
     }).join("");
     html += '<table class="rtable">'
-      + '<tr><th class="hd" colspan="2">MEJORAS REALIZADAS</th></tr>'
+      + '<tr><th class="hd" colspan="2">🛠️ MEJORAS REALIZADAS</th></tr>'
       + '<tr><td class="lbl" style="width:70%"></td><td class="lbl" style="width:30%">ESTADO</td></tr>'
       + mejorasRows
       + '</table>';
@@ -2077,12 +2077,12 @@
     html += reportPhotoGrid();
 
     html += '<table class="rtable">'
-      + '<tr><th class="hd">OBSERVACIONES</th></tr>'
+      + '<tr><th class="hd">📝 OBSERVACIONES</th></tr>'
       + '<tr><td>'+(esc(state.observaciones).replace(/\n/g,"<br>") || "—")+'</td></tr>'
     + '</table>';
 
     html += '<table class="rtable">'
-      + '<tr><th class="hd" style="width:70%">TÉCNICO RESPONSABLE</th><th class="hd">FECHA DEL INFORME</th></tr>'
+      + '<tr><th class="hd" style="width:70%">🧑‍🔧 TÉCNICO RESPONSABLE</th><th class="hd">FECHA DEL INFORME</th></tr>'
       + '<tr><td>'+esc(state.responsable.nombre||"—")+'</td><td>'+esc(fmtDate(state.control.fecha)||"—")+'</td></tr>'
     + '</table>';
 
@@ -2545,7 +2545,7 @@
     + '</div>';
 
     html += '<div class="exec-title">'
-      + '<h1>Informe Ejecutivo de Mantenimiento</h1>'
+      + '<h1>📋 Informe Ejecutivo de Mantenimiento</h1>'
       + '<div class="sub">'+esc(fmtDateRangeLong(fromStr, toStr))+'</div>'
     + '</div>';
 
@@ -2568,7 +2568,7 @@
       + '<div class="exec-stat-card"><div class="exec-stat-num">'+totalFotos+'</div><div class="exec-stat-label">FOTOS REGISTRADAS</div></div>'
     + '</div>';
 
-    html += '<div class="exec-section-title">Resumen general del estado revisado</div>';
+    html += '<div class="exec-section-title">📊 Resumen general del estado revisado</div>';
     if(totalItems > 0){
       ["BIEN", "REGULAR", "MAL"].forEach(function(k){
         var pct = Math.round((counts[k] / totalItems) * 100);
@@ -2582,7 +2582,7 @@
       html += '<div class="exec-empty-note">No hay puntos de revisión cargados todavía.</div>';
     }
 
-    html += '<div class="exec-section-title">Cantidad de racks por estado general</div>';
+    html += '<div class="exec-section-title">🗂️ Cantidad de racks por estado general</div>';
     html += '<div class="exec-bar-row">'
       + '<span class="exec-bar-label">'+ESTADO_PLAIN.BIEN+'</span>'
       + '<div class="exec-bar-track"><div class="exec-bar-fill BIEN" style="width:'+Math.round((rackStatusCounts.BIEN / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
@@ -2599,7 +2599,7 @@
       + '<span class="exec-bar-value">'+rackStatusCounts.MAL+'</span>'
     + '</div>';
 
-    html += '<div class="exec-section-title">Racks por tipo de red</div>';
+    html += '<div class="exec-section-title">🎨 Racks por tipo de red</div>';
     html += '<div class="exec-dual-chart">'
       + '<div class="exec-dual-col"><div class="exec-subhead">Total de racks revisados</div>'
         + renderPieChart(racksByFibra, FIBRA_COLORS, "No hay racks con red asignada.")
@@ -2609,7 +2609,7 @@
       + '</div>'
     + '</div>';
 
-    html += '<div class="exec-section-title">Mejoras y tareas realizadas</div>';
+    html += '<div class="exec-section-title">🛠️ Mejoras y tareas realizadas</div>';
     if(repeatedRacks.length){
       var repeatedText = repeatedRacks.map(function(rr){
         return '<b>'+esc(rr.rack)+'</b> ('+rr.count+' visitas)';
@@ -2626,7 +2626,7 @@
       html += '<div class="exec-empty-note">No se registraron observaciones adicionales sobre tareas realizadas.</div>';
     }
 
-    html += '<div class="exec-section-title">Puntos que requieren seguimiento</div>';
+    html += '<div class="exec-section-title">⚠️ Puntos que requieren seguimiento</div>';
     if(inconvenientes.length){
       html += renderPieChart(inconvenientesPorArea);
     } else {
@@ -2638,10 +2638,10 @@
       + 'inmediata cuando la situación lo requiere. Los avances sobre estos puntos se reflejan en los próximos informes de mantenimiento.'
     + '</div>';
 
-    html += '<div class="exec-section-title">Racks revisados por técnico</div>';
+    html += '<div class="exec-section-title">🧑‍🔧 Racks revisados por técnico</div>';
     html += renderPieChart(racksByTecnico);
 
-    html += '<div class="exec-section-title">Detalle por rack</div>';
+    html += '<div class="exec-section-title">📋 Detalle por rack</div>';
     html += '<table class="rtable">'
       + '<tr><th class="hd">RACK</th><th class="hd">UBICACIÓN</th><th class="hd">TÉCNICO</th><th class="hd">ESTADO</th></tr>';
     reports.forEach(function(r){
