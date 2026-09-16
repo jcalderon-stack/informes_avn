@@ -357,6 +357,10 @@
   .mejora-check:has(input:checked){color:var(--ok);}
 
   .detalles-label{font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin:14px 0 5px;}
+  .mejora-cat-title{
+    font-family:'Barlow Condensed';font-size:16px;font-weight:700;color:var(--ink);
+    padding-bottom:6px;margin-bottom:4px;border-bottom:2px solid var(--line-soft);
+  }
 
   /* photos */
   .photo-group{margin-bottom:8px;}
@@ -513,7 +517,7 @@
     padding:4px;
   }
   .rphoto-cell:last-child{border-bottom:none;}
-  .rphoto-cell img{max-width:100%;max-height:170px;object-fit:contain;}
+  .rphoto-cell img{max-width:100%;max-height:170px;object-fit:contain;cursor:zoom-in;}
   .rphoto-cell .empty-ph{color:#aaa;font-size:12px;font-style:italic;}
 
   .report-actions{
@@ -775,6 +779,40 @@
     .user-badge{padding:6px;border-radius:50%;}
   }
 
+  /* ---------- Photo lightbox (zoom) ---------- */
+  .photo-lightbox{
+    display:none;
+    position:fixed; inset:0; z-index:300;
+    background:rgba(10,10,10,.92);
+  }
+  .photo-lightbox.active{display:flex;}
+  .lightbox-stage{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    overflow:hidden; touch-action:none; cursor:grab;
+  }
+  .lightbox-stage.grabbing{cursor:grabbing;}
+  .lightbox-stage img{
+    max-width:92vw; max-height:88vh; object-fit:contain;
+    user-select:none; -webkit-user-drag:none;
+    transform-origin:center center;
+    transition:transform .06s linear;
+  }
+  .lightbox-close{
+    position:absolute; top:14px; right:16px; z-index:2;
+    width:42px; height:42px; border-radius:50%;
+    background:rgba(255,255,255,.12); border:1.5px solid rgba(255,255,255,.4);
+    color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center;
+  }
+  .lightbox-close:hover{background:rgba(255,255,255,.22);}
+  .lightbox-hint{
+    position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+    color:#D9DBDD; font-size:12.5px; background:rgba(0,0,0,.35);
+    padding:7px 14px; border-radius:20px; white-space:nowrap; z-index:2;
+  }
+  @media (max-width:640px){
+    .lightbox-hint{font-size:11px; padding:6px 12px; max-width:90vw; white-space:normal; text-align:center;}
+  }
+
   @media print{
     @page{ margin: 12mm; }
     body *{ visibility:hidden !important; }
@@ -887,6 +925,14 @@
       </div>
     </div>
   </div>
+
+  <div class="photo-lightbox" id="photo-lightbox">
+    <button class="lightbox-close" id="lightbox-close" title="Cerrar">✕</button>
+    <div class="lightbox-hint">🖱️ Rueda del mouse o pellizcá para hacer zoom · arrastrá para mover</div>
+    <div class="lightbox-stage" id="lightbox-stage">
+      <img id="lightbox-img" src="" alt="Foto ampliada">
+    </div>
+  </div>
 </div>
 
 <script>
@@ -904,7 +950,7 @@
     {id:"control",     num:1, title:"Control de Rack"},
     {id:"exterior",    num:2, title:"Exterior",  items:["Canalización","Tritubo","Base","Anclaje","Gabinete","Pintura","Sistema de Cierre"]},
     {id:"interior",    num:3, title:"Interior",  items:["Bisagras","Nivel de Limpieza","Filtraciones","Bandejas","Ordenadores de cable"]},
-    {id:"termico",     num:4, title:"Acondicionamiento Térmico", items:["Burletes","Ventilación","Coolers","Regulador de Temperatura","Filtros"]},
+    {id:"termico",     num:4, title:"Acondicionamiento Térmico", items:["Burletes","Coolers","Regulador de Temperatura","Filtros"]},
     {id:"networking",  num:5, title:"Networking"},
     {id:"electrica",   num:6, title:"Red Eléctrica", items:["Puesta a Tierra","Etiquetado","UPS"]},
     {id:"mejoras",     num:7, title:"Mejoras Realizadas"},
@@ -931,16 +977,37 @@
     "RED 050 - Azul Celeste": "🔵",
     "RED 000 - Gris": "⚪"
   };
-  var MEJORAS_ITEMS = [
-    "Cambio de Baterías UPS",
-    "Colocación de Cerradura",
-    "Mantenimiento general",
-    "Reordenamiento de Cables",
-    "Colocación de JACK",
-    "Funcionamiento de fibra óptica",
-    "Incidente",
-    "Colocación de Organizador",
-    "Colocación de PDU"
+
+  var BARRIOS = [
+    "La Isla", "El Golf", "Los Castores", "El Yacht", "Virazón", "Los Puentes",
+    "Los Lagos", "Cabos del Lago", "Bahía Grande", "Portezuelo", "Las Caletas",
+    "Las Castoras", "Las Glorietas", "Los Alisos", "Los Sauces", "Los Castaños",
+    "Las Tipas", "La Alameda", "Carpinchos", "Gaviotas", "Islas del Golf",
+    "Senderos", "Silvestre"
+  ];
+
+  // Mejoras Realizadas: menú agrupado por tipo de tarea.
+  var MEJORAS_CATEGORIES = [
+    {
+      key: "general", title: "Mantenimiento General",
+      items: ["Colocación de Insecticida", "Limpieza con Sopladora", "Limpieza con Alcohol Isopropílico", "Etiquetar RACK"]
+    },
+    {
+      key: "ups", title: "Mantenimiento de UPS",
+      items: ["Cambio de UPS", "Cambio de Baterías", "Colocación o Cambio de PDU"]
+    },
+    {
+      key: "cerraduras", title: "Colocación de Cerraduras",
+      items: ["Cambio de Cerradura Analógica (Manual)", "Colocación de Cerradura", "Colocación de Terminal de Acceso"]
+    },
+    {
+      key: "cables", title: "Reordenamiento de Cables",
+      items: ["Precintar y Acomodación de Cables", "Colocación de JACK - RJ45", "Colocación de Organizador", "Colocación de Patchera", "Cambios de Patch Cord"]
+    },
+    {
+      key: "incidente", title: "Incidente de Servicio",
+      items: ["Fusionamiento de Fibra Óptica", "Colocación de Empalme Mecánico"]
+    }
   ];
 
   /* ============ STATE ============ */
@@ -956,7 +1023,9 @@
 
   function emptyMejorasItems(){
     var o = {};
-    MEJORAS_ITEMS.forEach(function(k){ o[k] = { checked: false }; });
+    MEJORAS_CATEGORIES.forEach(function(cat){
+      cat.items.forEach(function(k){ o[k] = { checked: false }; });
+    });
     return o;
   }
 
@@ -968,12 +1037,12 @@
       createdAt: Date.now(),
       createdByEmail: authEmail || "",
       createdByName: authName || "",
-      control: {numero:"", fecha:today, nombreRack:"", etiquetaRack:"", ubicacion:"", latitud:"", longitud:"", empresa:""},
+      control: {numero:"", fecha:today, nombreRack:"", etiquetaRack:"", ubicacion:"", direccionGPS:"", barrio:"", latitud:"", longitud:"", empresa:"", llaveAdicional:""},
       exterior: {items: emptyChecklist(SECTIONS[1].items)},
       interior: {items: emptyChecklist(SECTIONS[2].items)},
       termico: {items: emptyChecklist(SECTIONS[3].items), coolerCantidad:""},
       networking: {devices: [emptyNetworkDevice()], fibra: ""},
-      electrica: {items: emptyChecklist(SECTIONS[5].items), marca:"", modelo:""},
+      electrica: {items: emptyChecklist(SECTIONS[5].items), marca:"", modelo:"", conectadoRed:"", port:""},
       mejoras: {items: emptyMejorasItems(), incidenteDetalle:""},
       fotosAntes: [],
       fotosDespues: [],
@@ -1048,16 +1117,29 @@
       });
     }
 
-    // Reports saved before "Mejoras Realizadas" existed
+    // Reports saved before "Mejoras Realizadas" existed (or before it was
+    // reorganized into categories): conservamos los checks que coincidan por
+    // nombre con los ítems nuevos; el resto de la estructura vieja se descarta.
     if(r && !r.mejoras){
       r.mejoras = { items: emptyMejorasItems(), incidenteDetalle: "" };
     } else if(r && r.mejoras){
       var mergedItems = emptyMejorasItems();
-      MEJORAS_ITEMS.forEach(function(k){
+      Object.keys(mergedItems).forEach(function(k){
         if(r.mejoras.items && r.mejoras.items[k]) mergedItems[k] = r.mejoras.items[k];
       });
       r.mejoras.items = mergedItems;
       if(r.mejoras.incidenteDetalle === undefined) r.mejoras.incidenteDetalle = "";
+    }
+
+    // Campos nuevos de Control de Rack y UPS: valor por defecto en informes viejos.
+    if(r && r.control){
+      if(r.control.direccionGPS === undefined) r.control.direccionGPS = "";
+      if(r.control.barrio === undefined) r.control.barrio = "";
+      if(r.control.llaveAdicional === undefined) r.control.llaveAdicional = "";
+    }
+    if(r && r.electrica){
+      if(r.electrica.conectadoRed === undefined) r.electrica.conectadoRed = "";
+      if(r.electrica.port === undefined) r.electrica.port = "";
     }
     return r;
   }
@@ -1065,6 +1147,7 @@
   var state = null;
   var currentView = "home";
   var saveTimer = null;
+  var geoDebounceTimer = null;
   var reportsCache = [];
   var trackingSheetUrl = "";
 
@@ -1516,6 +1599,132 @@
     document.documentElement.style.setProperty("--scroll-offset", (topbarH + extra + 14) + "px");
   }
 
+  /* ============ PHOTO LIGHTBOX (zoom / pan) ============ */
+  var lb = { scale: 1, x: 0, y: 0, dragging: false, startX: 0, startY: 0, pinchDist: 0, pinchScale: 1 };
+
+  function lbApply(){
+    var img = $("#lightbox-img");
+    if(img) img.style.transform = "translate(" + lb.x + "px," + lb.y + "px) scale(" + lb.scale + ")";
+  }
+
+  function lbReset(){
+    lb.scale = 1; lb.x = 0; lb.y = 0;
+    lbApply();
+  }
+
+  function openLightbox(src){
+    var overlay = $("#photo-lightbox");
+    var img = $("#lightbox-img");
+    if(!overlay || !img || !src) return;
+    img.src = src;
+    lbReset();
+    overlay.classList.add("active");
+  }
+
+  function closeLightbox(){
+    var overlay = $("#photo-lightbox");
+    if(overlay) overlay.classList.remove("active");
+  }
+
+  function clampScale(s){ return Math.min(5, Math.max(1, s)); }
+
+  function initLightbox(){
+    var overlay = $("#photo-lightbox");
+    var stage = $("#lightbox-stage");
+    var img = $("#lightbox-img");
+    if(!overlay || !stage || !img) return;
+
+    $("#lightbox-close").onclick = closeLightbox;
+    overlay.addEventListener("click", function(e){
+      if(e.target === overlay) closeLightbox();
+    });
+    document.addEventListener("keydown", function(e){
+      if(e.key === "Escape" && overlay.classList.contains("active")) closeLightbox();
+    });
+
+    // Zoom con la rueda del mouse (equipos de escritorio)
+    stage.addEventListener("wheel", function(e){
+      e.preventDefault();
+      var delta = -e.deltaY * 0.0018;
+      lb.scale = clampScale(lb.scale + delta);
+      if(lb.scale === 1){ lb.x = 0; lb.y = 0; }
+      lbApply();
+    }, { passive: false });
+
+    // Doble clic / doble toque: alterna entre 1x y 2.5x
+    stage.addEventListener("dblclick", function(){
+      lb.scale = (lb.scale > 1) ? 1 : 2.5;
+      lb.x = 0; lb.y = 0;
+      lbApply();
+    });
+
+    // Arrastrar para mover la imagen ampliada (mouse)
+    stage.addEventListener("mousedown", function(e){
+      if(lb.scale <= 1) return;
+      lb.dragging = true;
+      lb.startX = e.clientX - lb.x;
+      lb.startY = e.clientY - lb.y;
+      stage.classList.add("grabbing");
+    });
+    window.addEventListener("mousemove", function(e){
+      if(!lb.dragging) return;
+      lb.x = e.clientX - lb.startX;
+      lb.y = e.clientY - lb.startY;
+      lbApply();
+    });
+    window.addEventListener("mouseup", function(){
+      lb.dragging = false;
+      stage.classList.remove("grabbing");
+    });
+
+    // Táctil: un dedo arrastra, dos dedos hacen pellizco (pinch) para zoom
+    stage.addEventListener("touchstart", function(e){
+      if(e.touches.length === 2){
+        lb.pinchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        lb.pinchScale = lb.scale;
+      } else if(e.touches.length === 1 && lb.scale > 1){
+        lb.dragging = true;
+        lb.startX = e.touches[0].clientX - lb.x;
+        lb.startY = e.touches[0].clientY - lb.y;
+      }
+    }, { passive: true });
+
+    stage.addEventListener("touchmove", function(e){
+      if(e.touches.length === 2){
+        e.preventDefault();
+        var dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if(lb.pinchDist > 0){
+          lb.scale = clampScale(lb.pinchScale * (dist / lb.pinchDist));
+          if(lb.scale === 1){ lb.x = 0; lb.y = 0; }
+          lbApply();
+        }
+      } else if(e.touches.length === 1 && lb.dragging){
+        e.preventDefault();
+        lb.x = e.touches[0].clientX - lb.startX;
+        lb.y = e.touches[0].clientY - lb.startY;
+        lbApply();
+      }
+    }, { passive: false });
+
+    stage.addEventListener("touchend", function(e){
+      if(e.touches.length < 2) lb.pinchDist = 0;
+      if(e.touches.length === 0) lb.dragging = false;
+    });
+
+    // Delegado: cualquier foto de "Antes/Después" dentro del informe abre el zoom.
+    document.addEventListener("click", function(e){
+      if(e.target && e.target.matches && e.target.matches(".rphoto-cell img")){
+        openLightbox(e.target.getAttribute("src"));
+      }
+    });
+  }
+
   function updateReportActionVisibility(){
     var editBtn = $("#btn-edit-from-report");
     var saveDriveBtn = $("#btn-save-drive");
@@ -1710,9 +1919,10 @@
     var b = '<div class="section-card" id="card-control">' + sectionHead(s) + '<div class="section-body">';
     b += '<div class="field-row">' + fieldHTML("control.numero","N° de control",{placeholder:"Generando…", readonly:true}) + fieldHTML("control.fecha","Fecha",{type:"date"}) + '</div>';
     b += '<div class="field-row">' + fieldHTML("control.nombreRack","Nombre de rack",{placeholder:"Ej: DOMO53", transform:"upperAlnum"}) + fieldHTML("control.etiquetaRack","Etiqueta de rack",{placeholder:"Ej: SW-DOMO53"}) + '</div>';
-    b += '<div class="field-row single">' + fieldHTML("control.ubicacion","Ubicación",{placeholder:"Ej: Perímetro El Yacht"}) + '</div>';
+    b += '<div class="field-row">' + fieldHTML("control.ubicacion","Ubicación",{placeholder:"Ej: Perímetro El Yacht"}) + selectFieldHTML("control.barrio","Barrio",BARRIOS) + '</div>';
     b += '<div class="field-row">' + fieldHTML("control.latitud","Latitud",{placeholder:"-34.385035"}) + fieldHTML("control.longitud","Longitud",{placeholder:"-58.653196"}) + '</div>';
-    b += '<div class="field-row single">' + selectFieldHTML("control.empresa","Empresa",EMPRESAS) + '</div>';
+    b += '<div class="field-row single">' + fieldHTML("control.direccionGPS","Dirección GPS",{placeholder:"Se completa sola con Latitud/Longitud", readonly:true}) + '</div>';
+    b += '<div class="field-row">' + selectFieldHTML("control.empresa","Empresa",EMPRESAS) + selectFieldHTML("control.llaveAdicional","¿Se necesita llave adicional para acceso?",["Sí","No"]) + '</div>';
     b += '</div></div>';
     return b;
   }
@@ -1775,23 +1985,29 @@
     s.items.forEach(function(item){ b += checklistRowHTML("electrica", item, null); });
     b += '</div>';
     b += '<div class="field-row" style="margin-top:14px;">' + fieldHTML("electrica.marca","Marca (UPS)",{placeholder:"Ej: EATON"}) + fieldHTML("electrica.modelo","Modelo (UPS)",{placeholder:"Ej: DX 1000"}) + '</div>';
+    b += '<div class="field-row">' + selectFieldHTML("electrica.conectadoRed","Conectado por RED",["Sí","No"]) + fieldHTML("electrica.port","Port",{placeholder:"Ej: 1"}) + '</div>';
     b += '</div></div>';
     return b;
   }
 
   function renderMejorasSection(s){
     var b = '<div class="section-card" id="card-mejoras">' + sectionHead(s) + '<div class="section-body">';
-    b += '<div class="checklist">';
-    MEJORAS_ITEMS.forEach(function(item){
-      var checked = !!(state.mejoras.items[item] && state.mejoras.items[item].checked);
-      b += '<div class="check-row">'
-        + '<span class="check-row-name">'+esc(item)+'</span>'
-        + '<label class="mejora-check"><input type="checkbox" data-path="mejoras.items.'+esc(item)+'.checked"'+(checked?' checked':'')+'> Realizado</label>'
-      + '</div>';
+    MEJORAS_CATEGORIES.forEach(function(cat, catIdx){
+      b += '<div class="mejora-cat-title"'+(catIdx>0?' style="margin-top:18px;"':'')+'>'+esc(cat.title)+'</div>';
+      b += '<div class="checklist">';
+      cat.items.forEach(function(item){
+        var checked = !!(state.mejoras.items[item] && state.mejoras.items[item].checked);
+        b += '<div class="check-row">'
+          + '<span class="check-row-name">'+esc(item)+'</span>'
+          + '<label class="mejora-check"><input type="checkbox" data-path="mejoras.items.'+esc(item)+'.checked"'+(checked?' checked':'')+'> Realizado</label>'
+        + '</div>';
+      });
+      b += '</div>';
+      if(cat.key === "incidente"){
+        b += '<label class="detalles-label">Detalle del incidente (si aplica)</label>';
+        b += '<textarea data-path="mejoras.incidenteDetalle" placeholder="Descripción del incidente, si corresponde...">'+esc(state.mejoras.incidenteDetalle)+'</textarea>';
+      }
     });
-    b += '</div>';
-    b += '<label class="detalles-label">Detalle del incidente (si aplica)</label>';
-    b += '<textarea data-path="mejoras.incidenteDetalle" placeholder="Descripción del incidente, si corresponde...">'+esc(state.mejoras.incidenteDetalle)+'</textarea>';
     b += '</div></div>';
     return b;
   }
@@ -1919,6 +2135,10 @@
         if(input.dataset.path === "networking.fibra"){
           var swatch = $("#fibra-swatch");
           if(swatch) swatch.style.background = FIBRA_COLORS[value] || "transparent";
+        }
+        if(input.dataset.path === "control.latitud" || input.dataset.path === "control.longitud"){
+          clearTimeout(geoDebounceTimer);
+          geoDebounceTimer = setTimeout(autoFillDireccionGPS, 900);
         }
         if(isCheckbox) renderStepper();
         scheduleSave();
@@ -2061,8 +2281,10 @@
       + '<tr><th class="hd" colspan="2">🏷️ CONTROL DE RACK</th><td class="lbl" style="width:18%">N° CONTROL</td><td style="width:20%">'+esc(c.numero||"—")+'</td></tr>'
       + '<tr><td class="lbl">NOMBRE DE RACK</td><td>'+esc(c.nombreRack||"—")+'</td><td class="lbl">FECHA</td><td>'+esc(fmtDate(c.fecha)||"—")+'</td></tr>'
       + '<tr><td class="lbl">ETIQUETA DE RACK</td><td colspan="3">'+esc(c.etiquetaRack||"—")+'</td></tr>'
-      + '<tr><td class="lbl">UBICACIÓN</td><td>'+esc(c.ubicacion||"—")+'</td><td class="lbl">LATITUD</td><td>'+esc(c.latitud||"—")+'</td></tr>'
-      + '<tr><td class="lbl">EMPRESA</td><td>'+esc(c.empresa||"—")+'</td><td class="lbl">LONGITUD</td><td>'+esc(c.longitud||"—")+'</td></tr>'
+      + '<tr><td class="lbl">UBICACIÓN</td><td>'+esc(c.ubicacion||"—")+'</td><td class="lbl">BARRIO</td><td>'+esc(c.barrio||"—")+'</td></tr>'
+      + '<tr><td class="lbl">LATITUD</td><td>'+esc(c.latitud||"—")+'</td><td class="lbl">LONGITUD</td><td>'+esc(c.longitud||"—")+'</td></tr>'
+      + '<tr><td class="lbl">DIRECCIÓN GPS</td><td colspan="3">'+esc(c.direccionGPS||"—")+'</td></tr>'
+      + '<tr><td class="lbl">EMPRESA</td><td>'+esc(c.empresa||"—")+'</td><td class="lbl">LLAVE ADICIONAL</td><td>'+esc(c.llaveAdicional||"—")+'</td></tr>'
     + '</table>';
 
     html += reportSectionTable("📦 EXTERIOR", checklistRowsForReport("exterior", SECTIONS[1].items));
@@ -2096,12 +2318,21 @@
       + '</table>';
 
     html += reportSectionTable("⚡ RED ELÉCTRICA", checklistRowsForReport("electrica", SECTIONS[5].items));
-    html += reportGridTable([["MARCA (UPS)", state.electrica.marca],["MODELO (UPS)", state.electrica.modelo]]);
+    html += reportGridTable([
+      ["MARCA (UPS)", state.electrica.marca],
+      ["MODELO (UPS)", state.electrica.modelo],
+      ["CONECTADO POR RED", state.electrica.conectadoRed],
+      ["PORT", state.electrica.port]
+    ]);
 
-    var mejorasRows = MEJORAS_ITEMS.map(function(k){
-      var done = !!(state.mejoras.items[k] && state.mejoras.items[k].checked);
-      return '<tr><td>'+esc(k)+'</td><td class="estado-cell '+(done?"BIEN":"")+'" style="text-align:center;">'+(done?"✔ Realizado":"—")+'</td></tr>';
-    }).join("");
+    var mejorasRows = "";
+    MEJORAS_CATEGORIES.forEach(function(cat){
+      mejorasRows += '<tr><td colspan="2" style="font-weight:700;background:#F2F2F2;">'+esc(cat.title)+'</td></tr>';
+      cat.items.forEach(function(k){
+        var done = !!(state.mejoras.items[k] && state.mejoras.items[k].checked);
+        mejorasRows += '<tr><td>'+esc(k)+'</td><td class="estado-cell '+(done?"BIEN":"")+'" style="text-align:center;">'+(done?"✔ Realizado":"—")+'</td></tr>';
+      });
+    });
     html += '<table class="rtable">'
       + '<tr><th class="hd" colspan="2">🛠️ MEJORAS REALIZADAS</th></tr>'
       + '<tr><td class="lbl" style="width:70%"></td><td class="lbl" style="width:30%">ESTADO</td></tr>'
@@ -3140,6 +3371,30 @@
     return /Android|iPhone|iPad|iPod|Mobile|webOS/i.test(navigator.userAgent || "");
   }
 
+  // Convierte Latitud/Longitud en una dirección legible (geocodificación
+  // inversa), usando el servicio público y gratuito de OpenStreetMap.
+  function reverseGeocode(lat, lng){
+    var url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + encodeURIComponent(lat) + "&lon=" + encodeURIComponent(lng) + "&zoom=18&addressdetails=0";
+    return fetch(url, { headers: { "Accept-Language": "es" } })
+      .then(function(r){ return r.json(); })
+      .then(function(data){ return (data && data.display_name) ? data.display_name : ""; })
+      .catch(function(e){ console.error("reverseGeocode error", e); return ""; });
+  }
+
+  function autoFillDireccionGPS(){
+    var lat = parseFloat(state.control.latitud);
+    var lng = parseFloat(state.control.longitud);
+    if(isNaN(lat) || isNaN(lng)) return;
+    var input = document.querySelector('[data-path="control.direccionGPS"]');
+    if(input) input.value = "Buscando dirección…";
+    reverseGeocode(lat, lng).then(function(direccion){
+      state.control.direccionGPS = direccion;
+      var el = document.querySelector('[data-path="control.direccionGPS"]');
+      if(el) el.value = direccion || "";
+      scheduleSave();
+    });
+  }
+
   function maybeOfferGeolocation(){
     if(!isMobileDevice() || !navigator.geolocation) return;
     var modal = $("#geo-modal");
@@ -3171,6 +3426,7 @@
           btn.disabled = false;
           toast("Ubicación cargada ✓");
           closeGeoModal();
+          autoFillDireccionGPS();
         },
         function(err){
           btn.disabled = false;
@@ -3217,6 +3473,7 @@
     syncStickyOffsets();
     window.addEventListener("resize", syncStickyOffsets);
     window.addEventListener("orientationchange", function(){ setTimeout(syncStickyOffsets, 300); });
+    initLightbox();
 
     $("#btn-form-home").onclick = goHome;
     $("#btn-report-home").onclick = goHome;
