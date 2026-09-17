@@ -686,6 +686,21 @@
   #executive-sheet-wrap{background:#D9DBDD;margin:0 -16px;padding:20px 16px 40px;}
   .exec-actions{display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px;flex-wrap:wrap;}
 
+  /* ---------- Comparative reports ---------- */
+  #view-comparativos-scroll{flex:1;}
+  .comp-menu-grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;
+  }
+  .comp-menu-card{
+    background:var(--card);border:1.5px solid var(--line);border-radius:6px;
+    padding:18px 16px;text-align:left;display:flex;align-items:center;gap:12px;
+    min-height:66px;
+  }
+  .comp-menu-card:hover{border-color:var(--ink);}
+  .comp-menu-icon{font-size:26px;flex:none;}
+  .comp-menu-title{font-size:14px;font-weight:700;line-height:1.3;}
+  #comparativo-sheet-wrap{background:#D9DBDD;margin:0 -16px;padding:20px 16px 40px;}
+
   .exec-logos-row{
     display:flex;align-items:center;justify-content:center;gap:30px;
     padding:18px 0 20px;border-bottom:2px solid var(--ink);margin-bottom:20px;flex-wrap:wrap;
@@ -817,8 +832,9 @@
     @page{ margin: 12mm; }
     body *{ visibility:hidden !important; }
     #report-sheet-wrap, #report-sheet-wrap *,
-    #executive-sheet-wrap, #executive-sheet-wrap * { visibility:visible !important; }
-    #report-sheet-wrap, #executive-sheet-wrap{
+    #executive-sheet-wrap, #executive-sheet-wrap *,
+    #comparativo-sheet-wrap, #comparativo-sheet-wrap * { visibility:visible !important; }
+    #report-sheet-wrap, #executive-sheet-wrap, #comparativo-sheet-wrap{
       position:absolute; left:0; top:0; width:100%; background:#fff; padding:0; margin:0;
     }
     .sheet{ box-shadow:none; margin:0; max-width:100%; }
@@ -893,6 +909,10 @@
 
     <section id="view-executive" class="view">
       <div id="view-executive-scroll"></div>
+    </section>
+
+    <section id="view-comparativos" class="view">
+      <div id="view-comparativos-scroll"></div>
     </section>
   </main>
 
@@ -1010,6 +1030,42 @@
     }
   ];
 
+  // Sistema de puntos para el Informe de Materiales Necesarios: cada punto
+  // marcado en un relevamiento representa esa cantidad de unidades del
+  // material a adquirir. Los ítems que no están acá (limpieza, insecticida,
+  // etc.) no generan necesidad de material.
+  var MEJORAS_PUNTOS = {
+    "Cambio de UPS": 1,
+    "Cambio de Baterías": 2,
+    "Colocación o Cambio de PDU": 1,
+    "Cambio de Cerradura Analógica (Manual)": 1,
+    "Colocación de Cerradura": 1,
+    "Colocación de Terminal de Acceso": 1,
+    "Precintar y Acomodación de Cables": 1,
+    "Colocación de Organizador": 1,
+    "Colocación de Patchera": 1,
+    "Colocación de Empalme Mecánico": 1
+  };
+
+  // Estos dos, en vez de sumar un punto fijo, le piden al técnico la
+  // cantidad exacta (pueden instalarse muchos JACK o Patch Cord por rack).
+  var MEJORAS_CANTIDAD_ITEMS = ["Colocación de JACK - RJ45", "Cambios de Patch Cord"];
+
+  var MEJORAS_MATERIAL_LABEL = {
+    "Cambio de UPS": "UPS",
+    "Cambio de Baterías": "Baterías para UPS",
+    "Colocación o Cambio de PDU": "PDU",
+    "Cambio de Cerradura Analógica (Manual)": "Cerradura analógica (manual)",
+    "Colocación de Cerradura": "Cerradura",
+    "Colocación de Terminal de Acceso": "Terminal de acceso",
+    "Precintar y Acomodación de Cables": "Precintos para cables",
+    "Colocación de JACK - RJ45": "JACK RJ45",
+    "Colocación de Organizador": "Organizador de cables",
+    "Colocación de Patchera": "Patchera",
+    "Cambios de Patch Cord": "Patch Cord",
+    "Colocación de Empalme Mecánico": "Empalme mecánico"
+  };
+
   /* ============ STATE ============ */
   function emptyChecklist(items){
     var o = {};
@@ -1024,7 +1080,10 @@
   function emptyMejorasItems(){
     var o = {};
     MEJORAS_CATEGORIES.forEach(function(cat){
-      cat.items.forEach(function(k){ o[k] = { checked: false }; });
+      cat.items.forEach(function(k){
+        o[k] = { checked: false };
+        if(MEJORAS_CANTIDAD_ITEMS.indexOf(k) !== -1) o[k].cantidad = "";
+      });
     });
     return o;
   }
@@ -1125,7 +1184,9 @@
     } else if(r && r.mejoras){
       var mergedItems = emptyMejorasItems();
       Object.keys(mergedItems).forEach(function(k){
-        if(r.mejoras.items && r.mejoras.items[k]) mergedItems[k] = r.mejoras.items[k];
+        if(r.mejoras.items && r.mejoras.items[k]){
+          mergedItems[k] = Object.assign({}, mergedItems[k], r.mejoras.items[k]);
+        }
       });
       r.mejoras.items = mergedItems;
       if(r.mejoras.incidenteDetalle === undefined) r.mejoras.incidenteDetalle = "";
@@ -1582,6 +1643,9 @@
     } else if(currentView === "executive"){
       title.textContent = "Informe Entregable al Cliente";
       sub.textContent = "Resumen ejecutivo por fecha";
+    } else if(currentView === "comparativos"){
+      title.textContent = "Informes Comparativos";
+      sub.textContent = "Reportes específicos por categoría";
     }
     requestAnimationFrame(syncStickyOffsets);
   }
@@ -1745,7 +1809,10 @@
       html += '<button class="new-card" id="new-card-btn"><div class="new-card-text"><div class="t1">Nuevo relevamiento</div><div class="t2">Cargar datos y fotos de un rack</div></div><span class="plus">+</span></button>';
     }
     if(authRole === "admin"){
-      html += '<button class="btn btn-outline" id="btn-open-executive" style="width:100%;justify-content:center;margin-bottom:22px;">📄 Crear Informe Entregable al Cliente</button>';
+      html += '<button class="btn btn-outline" id="btn-open-executive" style="width:100%;justify-content:center;margin-bottom:12px;">📄 Crear Informe Entregable al Cliente</button>';
+    }
+    if(authRole === "admin" || authRole === "cliente"){
+      html += '<button class="btn btn-outline" id="btn-open-comparativos" style="width:100%;justify-content:center;margin-bottom:22px;">📊 Informes Comparativos</button>';
     }
 
     if(count === 0){
@@ -1786,6 +1853,8 @@
     if(newCardBtn) newCardBtn.onclick = function(){ startNew(); };
     var execBtn = $("#btn-open-executive");
     if(execBtn) execBtn.onclick = goExecutive;
+    var compBtn = $("#btn-open-comparativos");
+    if(compBtn) compBtn.onclick = goComparativos;
     $all(".act-view").forEach(function(b){ b.onclick = function(){ openReportById(b.dataset.id); }; });
     $all(".act-edit").forEach(function(b){ b.onclick = function(){ openEditById(b.dataset.id); }; });
     $all(".act-del").forEach(function(b){
@@ -1997,8 +2066,14 @@
       b += '<div class="checklist">';
       cat.items.forEach(function(item){
         var checked = !!(state.mejoras.items[item] && state.mejoras.items[item].checked);
+        var extra = "";
+        if(MEJORAS_CANTIDAD_ITEMS.indexOf(item) !== -1){
+          var qty = (state.mejoras.items[item] && state.mejoras.items[item].cantidad) || "";
+          extra = '<input class="mini-input" type="number" min="1" placeholder="Cant." data-path="mejoras.items.'+esc(item)+'.cantidad" value="'+esc(qty)+'">';
+        }
         b += '<div class="check-row">'
           + '<span class="check-row-name">'+esc(item)+'</span>'
+          + extra
           + '<label class="mejora-check"><input type="checkbox" data-path="mejoras.items.'+esc(item)+'.checked"'+(checked?' checked':'')+'> Realizado</label>'
         + '</div>';
       });
@@ -2650,6 +2725,157 @@
     return map;
   }
 
+  // ---- Nuevas categorías del Informe Ejecutivo ----
+  function collectItemStatusByRack(reports, sectionKey, itemName){
+    var rows = [];
+    reports.forEach(function(r){
+      var items = r[sectionKey] && r[sectionKey].items;
+      var estado = items && items[itemName] && items[itemName].estado;
+      if(estado){
+        rows.push({ rack: r.control.nombreRack || "Rack sin nombre", estado: estado });
+      }
+    });
+    return rows;
+  }
+
+  function collectDamagedLocks(reports){
+    return collectItemStatusByRack(reports, "exterior", "Sistema de Cierre")
+      .filter(function(x){ return x.estado === "MAL" || x.estado === "REGULAR"; });
+  }
+
+  function collectRacksWithThermalSensor(reports){
+    return collectItemStatusByRack(reports, "termico", "Regulador de Temperatura")
+      .filter(function(x){ return x.estado === "BIEN"; });
+  }
+
+  function collectRacksWithPatcheraOrganizador(reports){
+    var rows = [];
+    reports.forEach(function(r){
+      var items = r.mejoras && r.mejoras.items;
+      if(!items) return;
+      var patchera = !!(items["Colocación de Patchera"] && items["Colocación de Patchera"].checked);
+      var organizador = !!(items["Colocación de Organizador"] && items["Colocación de Organizador"].checked);
+      if(patchera || organizador){
+        rows.push({ rack: r.control.nombreRack || "Rack sin nombre", patchera: patchera, organizador: organizador });
+      }
+    });
+    return rows;
+  }
+
+  function collectCriticalIncidents(reports){
+    var rows = [];
+    reports.forEach(function(r){
+      var items = r.mejoras && r.mejoras.items;
+      var hasIncidentItem = !!(items && (
+        (items["Fusionamiento de Fibra Óptica"] && items["Fusionamiento de Fibra Óptica"].checked) ||
+        (items["Colocación de Empalme Mecánico"] && items["Colocación de Empalme Mecánico"].checked)
+      ));
+      var detalle = (r.mejoras && r.mejoras.incidenteDetalle) ? r.mejoras.incidenteDetalle.trim() : "";
+      var estado = rackOverallStatus(r);
+      if(hasIncidentItem || detalle || estado === "MAL"){
+        rows.push({
+          rack: r.control.nombreRack || "Rack sin nombre",
+          estado: estado,
+          detalle: detalle
+        });
+      }
+    });
+    return rows;
+  }
+
+  function collectGabinetePinturaAnclaje(reports){
+    var rows = [];
+    reports.forEach(function(r){
+      var items = r.exterior && r.exterior.items;
+      if(!items) return;
+      var gabinete = items["Gabinete"] && items["Gabinete"].estado;
+      var pintura = items["Pintura"] && items["Pintura"].estado;
+      var anclaje = items["Anclaje"] && items["Anclaje"].estado;
+      if(gabinete || pintura || anclaje){
+        rows.push({ rack: r.control.nombreRack || "Rack sin nombre", gabinete: gabinete, pintura: pintura, anclaje: anclaje });
+      }
+    });
+    return rows;
+  }
+
+  function renderRackEstadoTable(rows, emptyMsg){
+    if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
+    var trs = rows.map(function(x){
+      return '<tr><td>'+esc(x.rack)+'</td><td class="estado-cell '+x.estado+'">'+(ESTADO_PLAIN[x.estado]||esc(x.estado))+'</td></tr>';
+    }).join("");
+    return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">ESTADO</th></tr>'+trs+'</table>';
+  }
+
+  function renderGabineteTable(rows, emptyMsg){
+    if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
+    function cell(v){ return v ? '<td class="estado-cell '+v+'">'+(ESTADO_PLAIN[v]||esc(v))+'</td>' : '<td>—</td>'; }
+    var trs = rows.map(function(x){
+      return '<tr><td>'+esc(x.rack)+'</td>'+cell(x.gabinete)+cell(x.pintura)+cell(x.anclaje)+'</tr>';
+    }).join("");
+    return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">GABINETE</th><th class="hd">PINTURA</th><th class="hd">ANCLAJE</th></tr>'+trs+'</table>';
+  }
+
+  function renderPatcheraTable(rows, emptyMsg){
+    if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
+    var trs = rows.map(function(x){
+      return '<tr><td>'+esc(x.rack)+'</td><td style="text-align:center;">'+(x.patchera?"✔":"—")+'</td><td style="text-align:center;">'+(x.organizador?"✔":"—")+'</td></tr>';
+    }).join("");
+    return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">PATCHERA</th><th class="hd">ORGANIZADOR</th></tr>'+trs+'</table>';
+  }
+
+  function renderIncidenciasTable(rows, emptyMsg){
+    if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
+    var trs = rows.map(function(x){
+      return '<tr><td>'+esc(x.rack)+'</td><td class="estado-cell '+x.estado+'">'+(ESTADO_PLAIN[x.estado]||esc(x.estado))+'</td><td>'+(x.detalle?esc(x.detalle):"—")+'</td></tr>';
+    }).join("");
+    return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">ESTADO</th><th class="hd">DETALLE</th></tr>'+trs+'</table>';
+  }
+
+  // Sistema de puntos: suma, para todos los informes del período, cuántas
+  // unidades de cada material hay que adquirir según lo que marcaron los
+  // técnicos en "Mejoras Realizadas".
+  function collectMaterialesNecesarios(reports){
+    var totals = {};
+    var byRack = {};
+    reports.forEach(function(r){
+      var items = r.mejoras && r.mejoras.items;
+      if(!items) return;
+      var rackName = r.control.nombreRack || "Rack sin nombre";
+
+      Object.keys(MEJORAS_PUNTOS).forEach(function(key){
+        if(items[key] && items[key].checked){
+          var label = MEJORAS_MATERIAL_LABEL[key] || key;
+          var pts = MEJORAS_PUNTOS[key];
+          totals[label] = (totals[label] || 0) + pts;
+          byRack[label] = byRack[label] || [];
+          byRack[label].push(rackName + " (" + pts + ")");
+        }
+      });
+
+      MEJORAS_CANTIDAD_ITEMS.forEach(function(key){
+        if(items[key] && items[key].checked){
+          var qty = parseInt(items[key].cantidad, 10);
+          if(isNaN(qty) || qty < 1) qty = 1;
+          var label2 = MEJORAS_MATERIAL_LABEL[key] || key;
+          totals[label2] = (totals[label2] || 0) + qty;
+          byRack[label2] = byRack[label2] || [];
+          byRack[label2].push(rackName + " (" + qty + ")");
+        }
+      });
+    });
+    return { totals: totals, byRack: byRack };
+  }
+
+  function renderMaterialesTable(data){
+    var keys = Object.keys(data.totals);
+    if(!keys.length) return '<div class="exec-empty-note">No se registraron materiales a adquirir en este período.</div>';
+    keys.sort(function(a, b){ return data.totals[b] - data.totals[a]; });
+    var rows = keys.map(function(k){
+      return '<tr><td>'+esc(k)+'</td><td style="text-align:center;font-weight:700;">'+data.totals[k]+'</td><td style="font-size:11.5px;color:#666;">'+esc(data.byRack[k].join(", "))+'</td></tr>';
+    }).join("");
+    return '<table class="rtable"><tr><th class="hd">MATERIAL</th><th class="hd" style="width:16%">CANTIDAD</th><th class="hd" style="width:38%">RACKS</th></tr>'+rows+'</table>';
+  }
+
   // Racks visitados 2 o más veces dentro del período: se destacan como
   // seguimiento activo (evidencia de que se volvió a controlar la mejora).
   function collectRepeatedRacks(reports){
@@ -2877,7 +3103,7 @@
       + '</div>'
     + '</div>';
 
-    html += '<div class="exec-section-title">🛠️ Mejoras y tareas realizadas</div>';
+    html += '<div class="exec-section-title">🛠️ Mejoras y/o Tareas Realizadas</div>';
     if(repeatedRacks.length){
       var repeatedText = repeatedRacks.map(function(rr){
         return '<b>'+esc(rr.rack)+'</b> ('+rr.count+' visitas)';
@@ -2894,6 +3120,9 @@
       html += '<div class="exec-empty-note">No se registraron observaciones adicionales sobre tareas realizadas.</div>';
     }
 
+    html += '<div class="exec-section-title">🧰 Informe de Materiales Necesarios</div>';
+    html += renderMaterialesTable(collectMaterialesNecesarios(reports));
+
     html += '<div class="exec-section-title">⚠️ Puntos que requieren seguimiento</div>';
     if(inconvenientes.length){
       html += renderPieChart(inconvenientesPorArea);
@@ -2908,6 +3137,27 @@
 
     html += '<div class="exec-section-title">🔧 Racks revisados por técnico</div>';
     html += renderPieChart(racksByTecnico);
+
+    html += '<div class="exec-section-title">🔒 Racks con cerraduras dañadas</div>';
+    html += renderRackEstadoTable(collectDamagedLocks(reports), "No se detectaron cerraduras dañadas en este período. 🎉");
+
+    html += '<div class="exec-section-title">🌡️ Racks con sensores térmicos</div>';
+    html += renderRackEstadoTable(collectRacksWithThermalSensor(reports), "No se registraron racks con regulador de temperatura en este período.");
+
+    html += '<div class="exec-section-title">🗂️ Racks con patchera y organizador de cable</div>';
+    html += renderPatcheraTable(collectRacksWithPatcheraOrganizador(reports), "No se registró colocación de patchera ni organizador en este período.");
+
+    html += '<div class="exec-section-title">🚨 Informe de incidencias críticas</div>';
+    html += renderIncidenciasTable(collectCriticalIncidents(reports), "No se registraron incidencias críticas en este período. 🎉");
+
+    html += '<div class="exec-section-title">🎨 Informe de gabinetes / pintura / anclaje</div>';
+    html += renderGabineteTable(collectGabinetePinturaAnclaje(reports), "No hay datos cargados de gabinetes, pintura o anclaje en este período.");
+
+    html += '<div class="exec-section-title">🔩 Informe de bisagras</div>';
+    html += renderRackEstadoTable(collectItemStatusByRack(reports, "interior", "Bisagras"), "No hay datos cargados de bisagras en este período.");
+
+    html += '<div class="exec-section-title">🌬️ Informe de burletes</div>';
+    html += renderRackEstadoTable(collectItemStatusByRack(reports, "termico", "Burletes"), "No hay datos cargados de burletes en este período.");
 
     html += '<div class="exec-section-title">📋 Detalle por rack</div>';
     html += '<table class="rtable">'
@@ -2986,6 +3236,299 @@
     }).then(function(json){
       if(json && json.ok){
         toast("Informe ejecutivo guardado en Drive ✓");
+      } else {
+        console.error("Drive upload response", json);
+        toast("Error al guardar en Drive: " + (json && json.error ? json.error : "revisá la URL configurada"));
+      }
+    }).catch(function(err){
+      console.error(err);
+      toast("No se pudo generar o subir el PDF: " + (err && err.message ? err.message : err));
+    }).finally(function(){
+      btn.disabled = false;
+      btn.textContent = originalText;
+    });
+  }
+
+  /* ============ INFORMES COMPARATIVOS (admin + cliente) ============ */
+  var COMPARATIVE_REPORTS = [
+    { key:"cerraduras",  icon:"🔒", title:"Racks con Cerraduras Dañadas" },
+    { key:"termicos",    icon:"🌡️", title:"Racks con Sensores Térmicos" },
+    { key:"patchera",    icon:"🗂️", title:"Racks con Patchera y Organizador de Cable" },
+    { key:"incidencias", icon:"🚨", title:"Informe de Incidencias Críticas" },
+    { key:"gabinete",    icon:"🎨", title:"Informe de Gabinetes / Pintura / Anclaje" },
+    { key:"bisagras",    icon:"🔩", title:"Informe de Bisagras" },
+    { key:"burletes",    icon:"🌬️", title:"Informe de Burletes" },
+    { key:"materiales",  icon:"🧰", title:"Informe de Materiales Necesarios" }
+  ];
+
+  var compCurrentKey = "";
+  var compCurrentFrom = "";
+  var compCurrentTo = "";
+
+  function goComparativos(){
+    if(authRole !== "admin" && authRole !== "cliente"){ toast("No tenés permiso para esta acción"); return; }
+    switchView("comparativos");
+    renderComparativosMenu();
+  }
+
+  function comparativeReportByKey(key){
+    for(var i=0;i<COMPARATIVE_REPORTS.length;i++){ if(COMPARATIVE_REPORTS[i].key === key) return COMPARATIVE_REPORTS[i]; }
+    return null;
+  }
+
+  function renderComparativosMenu(){
+    var el = $("#view-comparativos-scroll");
+    var html = '<div style="max-width:820px;width:100%;margin:0 auto;padding:22px 16px 60px;">';
+    html += '<div class="home-head"><h1>Informes Comparativos</h1></div>';
+    html += '<div class="modal-sub" style="margin-bottom:18px;">Elegí un informe específico para verlo con sus propios gráficos, filtrado por el período que quieras.</div>';
+    html += '<div class="comp-menu-grid">';
+    COMPARATIVE_REPORTS.forEach(function(r){
+      html += '<button type="button" class="comp-menu-card" data-key="'+r.key+'">'
+        + '<span class="comp-menu-icon">'+r.icon+'</span>'
+        + '<span class="comp-menu-title">'+esc(r.title)+'</span>'
+      + '</button>';
+    });
+    html += '</div>';
+    html += '<button class="btn btn-outline btn-sm" id="btn-comp-home" style="margin-top:20px;">Volver a Inicio</button>';
+    html += '</div>';
+    el.innerHTML = html;
+
+    $("#btn-comp-home").onclick = goHome;
+    $all(".comp-menu-card").forEach(function(btn){
+      btn.onclick = function(){ renderComparativoSetup(btn.dataset.key); };
+    });
+  }
+
+  function renderComparativoSetup(key){
+    var cfg = comparativeReportByKey(key);
+    if(!cfg) return;
+    var el = $("#view-comparativos-scroll");
+    var today = new Date().toISOString().slice(0, 10);
+    var html = '<div style="max-width:820px;width:100%;margin:0 auto;padding:22px 16px 60px;">';
+    html += '<div class="exec-setup-box">'
+      + '<h1>'+cfg.icon+' '+esc(cfg.title)+'</h1>'
+      + '<div class="sub">Elegí el período que querés analizar.</div>'
+      + '<div class="field-row">'
+        + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Desde</label><input type="date" id="comp-date-from" value="'+today+'"></div>'
+        + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Hasta</label><input type="date" id="comp-date-to" value="'+today+'"></div>'
+      + '</div>'
+      + '<div class="exec-count-hint" id="comp-count-hint"></div>'
+      + '<div style="display:flex;gap:8px;justify-content:center;">'
+        + '<button class="btn btn-outline btn-sm" id="btn-comp-cancel">Volver</button>'
+        + '<button class="btn btn-accent" id="btn-comp-generate">Generar informe</button>'
+      + '</div>'
+    + '</div></div>';
+    el.innerHTML = html;
+
+    function updateHint(){
+      var from = $("#comp-date-from").value;
+      var to = $("#comp-date-to").value;
+      if(!from || !to){ $("#comp-count-hint").textContent = ""; return; }
+      if(from > to){ $("#comp-count-hint").textContent = "La fecha 'Desde' no puede ser posterior a 'Hasta'."; return; }
+      var n = reportsInRange(from, to).length;
+      $("#comp-count-hint").textContent = n + (n === 1 ? " relevamiento cargado en ese período." : " relevamientos cargados en ese período.");
+    }
+    updateHint();
+    $("#comp-date-from").addEventListener("input", updateHint);
+    $("#comp-date-to").addEventListener("input", updateHint);
+
+    $("#btn-comp-cancel").onclick = renderComparativosMenu;
+    $("#btn-comp-generate").onclick = function(){
+      var from = $("#comp-date-from").value;
+      var to = $("#comp-date-to").value;
+      if(!from || !to){ toast("Elegí las dos fechas del período"); return; }
+      if(from > to){ toast("La fecha 'Desde' no puede ser posterior a 'Hasta'"); return; }
+      var reports = reportsInRange(from, to);
+      if(!reports.length){ toast("No hay relevamientos cargados en ese período"); return; }
+      renderComparativoReport(key, from, to, reports);
+    };
+  }
+
+  function statCardHtml(num, label, color){
+    return '<div class="exec-stat-card"><div class="exec-stat-num"'+(color?' style="color:'+color+';"':'')+'>'+num+'</div><div class="exec-stat-label">'+esc(label)+'</div></div>';
+  }
+
+  function statusCountsFromRows(rows){
+    var counts = { BIEN:0, REGULAR:0, MAL:0 };
+    rows.forEach(function(x){ if(counts.hasOwnProperty(x.estado)) counts[x.estado]++; });
+    return counts;
+  }
+
+  function renderStatusBarChart(counts){
+    var total = counts.BIEN + counts.REGULAR + counts.MAL;
+    if(!total) return '<div class="exec-empty-note">No hay datos para graficar.</div>';
+    return ["BIEN","REGULAR","MAL"].map(function(k){
+      var pct = Math.round((counts[k] / total) * 100);
+      return '<div class="exec-bar-row">'
+        + '<span class="exec-bar-label">'+ESTADO_PLAIN[k]+'</span>'
+        + '<div class="exec-bar-track"><div class="exec-bar-fill '+k+'" style="width:'+pct+'%;"></div></div>'
+        + '<span class="exec-bar-value">'+counts[k]+' ('+pct+'%)</span>'
+      + '</div>';
+    }).join("");
+  }
+
+  function buildComparativeBody(key, reports){
+    var html = "";
+    if(key === "cerraduras"){
+      var rows = collectItemStatusByRack(reports, "exterior", "Sistema de Cierre");
+      var problems = collectDamagedLocks(reports);
+      var pct = rows.length ? Math.round((problems.length / rows.length) * 100) : 0;
+      html += '<div class="exec-stats-grid">'
+        + statCardHtml(rows.length, "RACKS EVALUADOS")
+        + statCardHtml(problems.length, "CON CERRADURA DAÑADA", "var(--bad)")
+        + statCardHtml(pct + "%", "% CON PROBLEMA", "var(--warn)")
+      + '</div>';
+      html += '<div class="exec-section-title">📊 Distribución de estado — Sistema de Cierre</div>' + renderStatusBarChart(statusCountsFromRows(rows));
+      html += '<div class="exec-section-title">📋 Detalle de racks con cerraduras dañadas</div>' + renderRackEstadoTable(problems, "No se detectaron cerraduras dañadas en este período. 🎉");
+
+    } else if(key === "termicos"){
+      var rowsT = collectItemStatusByRack(reports, "termico", "Regulador de Temperatura");
+      var withSensor = collectRacksWithThermalSensor(reports);
+      var pctT = reports.length ? Math.round((withSensor.length / reports.length) * 100) : 0;
+      html += '<div class="exec-stats-grid">'
+        + statCardHtml(reports.length, "RACKS REVISADOS")
+        + statCardHtml(withSensor.length, "CON SENSOR TÉRMICO", "var(--ok)")
+        + statCardHtml(pctT + "%", "COBERTURA")
+      + '</div>';
+      html += '<div class="exec-section-title">📊 Distribución de estado — Regulador de Temperatura</div>' + renderStatusBarChart(statusCountsFromRows(rowsT));
+      html += '<div class="exec-section-title">📋 Racks equipados con sensor térmico</div>' + renderRackEstadoTable(withSensor, "No se registraron racks con sensor térmico funcionando en este período.");
+
+    } else if(key === "patchera"){
+      var rowsP = collectRacksWithPatcheraOrganizador(reports);
+      var withPatchera = rowsP.filter(function(x){ return x.patchera; }).length;
+      var withOrganizador = rowsP.filter(function(x){ return x.organizador; }).length;
+      var withBoth = rowsP.filter(function(x){ return x.patchera && x.organizador; }).length;
+      html += '<div class="exec-stats-grid">'
+        + statCardHtml(rowsP.length, "RACKS CON ALGUNA MEJORA")
+        + statCardHtml(withBoth, "CON AMBAS", "var(--ok)")
+      + '</div>';
+      html += '<div class="exec-section-title">📊 Comparativa de colocación</div>';
+      html += renderCountBarChart({ "Patchera": withPatchera, "Organizador": withOrganizador, "Ambas": withBoth }, function(){ return "var(--ink)"; });
+      html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderPatcheraTable(rowsP, "No se registró colocación de patchera ni organizador en este período.");
+
+    } else if(key === "incidencias"){
+      var rowsI = collectCriticalIncidents(reports);
+      var countsI = statusCountsFromRows(rowsI);
+      html += '<div class="exec-stats-grid">'
+        + statCardHtml(rowsI.length, "RACKS CON INCIDENCIA", "var(--bad)")
+        + statCardHtml(reports.length ? Math.round((rowsI.length/reports.length)*100)+"%" : "0%", "% DEL PERÍODO")
+      + '</div>';
+      html += '<div class="exec-section-title">📊 Estado de los racks con incidencia</div>' + renderStatusBarChart(countsI);
+      html += '<div class="exec-section-title">📋 Detalle de incidencias</div>' + renderIncidenciasTable(rowsI, "No se registraron incidencias críticas en este período. 🎉");
+
+    } else if(key === "gabinete"){
+      var rowsG = collectGabinetePinturaAnclaje(reports);
+      function countsFor(field){
+        var c = { BIEN:0, REGULAR:0, MAL:0 };
+        rowsG.forEach(function(x){ if(x[field] && c.hasOwnProperty(x[field])) c[x[field]]++; });
+        return c;
+      }
+      html += '<div class="exec-stats-grid">' + statCardHtml(rowsG.length, "RACKS CON DATOS CARGADOS") + '</div>';
+      html += '<div class="exec-section-title">📊 Distribución por componente</div>';
+      html += '<div class="exec-dual-chart">'
+        + '<div class="exec-dual-col"><div class="exec-subhead">Gabinete</div>' + renderStatusBarChart(countsFor("gabinete")) + '</div>'
+        + '<div class="exec-dual-col"><div class="exec-subhead">Pintura</div>' + renderStatusBarChart(countsFor("pintura")) + '</div>'
+        + '<div class="exec-dual-col"><div class="exec-subhead">Anclaje</div>' + renderStatusBarChart(countsFor("anclaje")) + '</div>'
+      + '</div>';
+      html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderGabineteTable(rowsG, "No hay datos cargados de gabinetes, pintura o anclaje en este período.");
+
+    } else if(key === "bisagras"){
+      var rowsB = collectItemStatusByRack(reports, "interior", "Bisagras");
+      html += '<div class="exec-stats-grid">' + statCardHtml(rowsB.length, "RACKS EVALUADOS") + '</div>';
+      html += '<div class="exec-section-title">📊 Distribución de estado — Bisagras</div>' + renderStatusBarChart(statusCountsFromRows(rowsB));
+      html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderRackEstadoTable(rowsB, "No hay datos cargados de bisagras en este período.");
+
+    } else if(key === "burletes"){
+      var rowsBu = collectItemStatusByRack(reports, "termico", "Burletes");
+      html += '<div class="exec-stats-grid">' + statCardHtml(rowsBu.length, "RACKS EVALUADOS") + '</div>';
+      html += '<div class="exec-section-title">📊 Distribución de estado — Burletes</div>' + renderStatusBarChart(statusCountsFromRows(rowsBu));
+      html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderRackEstadoTable(rowsBu, "No hay datos cargados de burletes en este período.");
+
+    } else if(key === "materiales"){
+      var matData = collectMaterialesNecesarios(reports);
+      var matKeys = Object.keys(matData.totals);
+      var totalUnidades = matKeys.reduce(function(sum,k){ return sum + matData.totals[k]; }, 0);
+      html += '<div class="exec-stats-grid">'
+        + statCardHtml(matKeys.length, "TIPOS DE MATERIAL")
+        + statCardHtml(totalUnidades, "UNIDADES TOTALES", "var(--accent)")
+      + '</div>';
+      html += '<div class="exec-section-title">📊 Cantidad necesaria por material</div>';
+      html += renderCountBarChart(matData.totals, function(){ return "var(--accent)"; });
+      html += '<div class="exec-section-title">📋 Detalle por material y rack</div>' + renderMaterialesTable(matData);
+    }
+    return html;
+  }
+
+  function renderComparativoReport(key, fromStr, toStr, reports){
+    var cfg = comparativeReportByKey(key);
+    if(!cfg) return;
+    compCurrentKey = key;
+    compCurrentFrom = fromStr;
+    compCurrentTo = toStr;
+
+    var html = '<div class="sheet">';
+    html += '<div class="exec-logos-row">'
+      + '<img src="'+LOGO_AVN+'" alt="AVN">'
+      + '<span class="exec-logo-badge"><img src="'+LOGO_QUICKSOLUTIONS+'" alt="Support QSS"></span>'
+      + '<img src="'+LOGO_PNCIT+'" alt="PNC IT">'
+    + '</div>';
+    html += '<div class="exec-title">'
+      + '<h1>'+cfg.icon+' '+esc(cfg.title)+'</h1>'
+      + '<div class="sub">'+esc(fmtDateRangeLong(fromStr, toStr))+'</div>'
+    + '</div>';
+    html += buildComparativeBody(key, reports);
+    html += '<div class="exec-footer">'
+      + 'Informe generado automáticamente por la app de Relevamiento de Racks · https://anv.supportqss.com/ '
+      + esc(new Date().toLocaleString("es-AR")) + '<br>'
+      + 'Ante cualquier duda, contactar al equipo técnico de PNC IT / Support QSS.'
+    + '</div>';
+    html += '</div>';
+
+    var wrap = '<div class="exec-actions">'
+      + '<button class="btn btn-outline" id="btn-comp-back">← Elegir otro informe</button>'
+      + '<button class="btn btn-outline" id="btn-comp-home2">Inicio</button>'
+      + '<button class="btn btn-outline" id="btn-comp-print">🖨 Imprimir</button>'
+      + (authRole === "admin" ? '<button class="btn btn-accent" id="btn-comp-save-drive">☁ Guardar en Drive</button>' : '')
+    + '</div>'
+    + '<div id="comparativo-sheet-wrap">' + html + '</div>';
+
+    $("#view-comparativos-scroll").innerHTML = wrap;
+    $("#btn-comp-back").onclick = renderComparativosMenu;
+    $("#btn-comp-home2").onclick = goHome;
+    $("#btn-comp-print").onclick = function(){ window.print(); };
+    var saveBtn = $("#btn-comp-save-drive");
+    if(saveBtn) saveBtn.onclick = saveComparativoReportToDrive;
+  }
+
+  function comparativoFilename(key, fromStr, toStr){
+    var cfg = comparativeReportByKey(key);
+    var slugTitle = slug(cfg ? cfg.title : key);
+    return fromStr === toStr
+      ? ("Comparativo_" + slugTitle + "_" + slug(fromStr) + ".pdf")
+      : ("Comparativo_" + slugTitle + "_" + slug(fromStr) + "_a_" + slug(toStr) + ".pdf");
+  }
+
+  function saveComparativoReportToDrive(){
+    if(!getBackendUrl()){
+      toast("Primero configurá el guardado en Drive (⚙)");
+      openSettingsModal();
+      return;
+    }
+    var sheetEl = $("#comparativo-sheet-wrap .sheet");
+    if(!sheetEl){ toast("Generá el informe primero"); return; }
+    var btn = $("#btn-comp-save-drive");
+    var originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Generando PDF…";
+    buildPDF(sheetEl).then(function(doc){
+      btn.textContent = "Subiendo a Drive…";
+      var datauri = doc.output("datauristring");
+      var base64 = datauri.split(",")[1];
+      var filename = comparativoFilename(compCurrentKey, compCurrentFrom, compCurrentTo);
+      return uploadExecutivePdfToDrive(base64, filename, compCurrentFrom, compCurrentTo);
+    }).then(function(json){
+      if(json && json.ok){
+        toast("Informe guardado en Drive ✓");
       } else {
         console.error("Drive upload response", json);
         toast("Error al guardar en Drive: " + (json && json.error ? json.error : "revisá la URL configurada"));
