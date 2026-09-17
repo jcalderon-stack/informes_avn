@@ -4025,9 +4025,84 @@
         + '<button class="btn btn-outline btn-sm" id="btn-change-pass">Cambiar clave</button>'
         + '<div id="admin-pass-status" class="modal-status"></div>'
       + '</div>'
+      + '<div class="admin-section">'
+        + '<h3>Importar relevamientos</h3>'
+        + '<div class="sub">Subí un archivo .json exportado con el formato de la app (por ejemplo, un lote de relevamientos históricos migrados desde Word) para cargarlos directamente en Firestore. Las fotos incluidas se suben solas a Firebase Storage.</div>'
+        + '<div class="field"><input type="file" id="import-file-input" accept="application/json,.json"></div>'
+        + '<button class="btn btn-accent btn-sm" id="btn-import-start">Importar</button>'
+        + '<div id="import-status" class="modal-status"></div>'
+        + '<div id="import-progress" style="font-size:12.5px;color:var(--muted);margin-top:6px;"></div>'
+      + '</div>'
       + '<div style="text-align:center;margin:6px 0 20px;"><button class="btn btn-outline btn-sm" id="btn-admin-done">Volver</button></div>';
 
     $("#btn-admin-done").onclick = adminExitTarget;
+
+    $("#btn-import-start").onclick = function(){
+      var fileInput = $("#import-file-input");
+      var statusEl = $("#import-status");
+      var progressEl = $("#import-progress");
+      var file = fileInput.files && fileInput.files[0];
+      if(!file){ statusEl.textContent = "Elegí un archivo .json primero"; statusEl.className = "modal-status err"; return; }
+      if(!dbAvailable()){ statusEl.textContent = "Firebase no está configurado"; statusEl.className = "modal-status err"; return; }
+
+      var btn = $("#btn-import-start");
+      btn.disabled = true;
+      statusEl.textContent = "Leyendo archivo…";
+      statusEl.className = "modal-status";
+      progressEl.textContent = "";
+
+      var reader = new FileReader();
+      reader.onerror = function(){
+        statusEl.textContent = "No se pudo leer el archivo";
+        statusEl.className = "modal-status err";
+        btn.disabled = false;
+      };
+      reader.onload = function(){
+        var list;
+        try {
+          list = JSON.parse(reader.result);
+        } catch(e){
+          statusEl.textContent = "El archivo no es un JSON válido";
+          statusEl.className = "modal-status err";
+          btn.disabled = false;
+          return;
+        }
+        if(!Array.isArray(list) || !list.length){
+          statusEl.textContent = "El archivo no tiene una lista de relevamientos";
+          statusEl.className = "modal-status err";
+          btn.disabled = false;
+          return;
+        }
+
+        var ok = 0, fail = 0;
+        function importNext(i){
+          if(i >= list.length){
+            statusEl.textContent = "Listo: " + ok + " importados" + (fail ? ", " + fail + " con error" : "");
+            statusEl.className = fail ? "modal-status err" : "modal-status ok";
+            progressEl.textContent = "";
+            btn.disabled = false;
+            fileInput.value = "";
+            refreshHomeAndRender();
+            return;
+          }
+          var raw = list[i];
+          var rackLabel = (raw.control && raw.control.nombreRack) || ("informe " + (i+1));
+          progressEl.textContent = "Importando " + (i+1) + " / " + list.length + " — " + rackLabel + "…";
+          var report;
+          try { report = migrateReport(raw); } catch(e){ report = raw; }
+          if(!report.id){ report.id = "r_import_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+          saveReport(report).then(function(res){
+            if(res && res.ok) ok++; else fail++;
+            importNext(i + 1);
+          }).catch(function(){
+            fail++;
+            importNext(i + 1);
+          });
+        }
+        importNext(0);
+      };
+      reader.readAsText(file);
+    };
 
     $("#btn-save-client-id").onclick = function(){
       var val = $("#admin-client-id").value.trim();
