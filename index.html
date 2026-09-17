@@ -2726,6 +2726,26 @@
   }
 
   // ---- Nuevas categorías del Informe Ejecutivo ----
+  // Listado de ubicaciones: un renglón por rack (si el mismo rack tiene más
+  // de un relevamiento en el período, se queda con el más reciente).
+  function collectRackUbicaciones(reports){
+    var seen = {};
+    var rows = [];
+    reports.forEach(function(r){
+      var name = r.control.nombreRack || "Rack sin nombre";
+      if(seen[name]) return;
+      seen[name] = true;
+      rows.push({
+        rack: name,
+        direccion: r.control.direccionGPS || r.control.ubicacion || "",
+        barrio: r.control.barrio || "",
+        llave: r.control.llaveAdicional || ""
+      });
+    });
+    rows.sort(function(a, b){ return a.rack.localeCompare(b.rack); });
+    return rows;
+  }
+
   function collectItemStatusByRack(reports, sectionKey, itemName){
     var rows = [];
     reports.forEach(function(r){
@@ -2798,9 +2818,24 @@
     return rows;
   }
 
+  // Orden de severidad para los Informes Comparativos: lo deteriorado o a
+  // cambiar va primero, lo que está en buen estado queda al final.
+  function estadoSeverityRank(estado){
+    if(estado === "MAL") return 0;
+    if(estado === "REGULAR") return 1;
+    if(estado === "BIEN") return 2;
+    return 3;
+  }
+  function sortBySeverity(rows, getEstado){
+    return rows.slice().sort(function(a, b){
+      return estadoSeverityRank(getEstado(a)) - estadoSeverityRank(getEstado(b));
+    });
+  }
+
   function renderRackEstadoTable(rows, emptyMsg){
     if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
-    var trs = rows.map(function(x){
+    var sorted = sortBySeverity(rows, function(x){ return x.estado; });
+    var trs = sorted.map(function(x){
       return '<tr><td>'+esc(x.rack)+'</td><td class="estado-cell '+x.estado+'">'+(ESTADO_PLAIN[x.estado]||esc(x.estado))+'</td></tr>';
     }).join("");
     return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">ESTADO</th></tr>'+trs+'</table>';
@@ -2808,11 +2843,23 @@
 
   function renderGabineteTable(rows, emptyMsg){
     if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
+    function worst(x){
+      return Math.min(estadoSeverityRank(x.gabinete), estadoSeverityRank(x.pintura), estadoSeverityRank(x.anclaje));
+    }
+    var sorted = rows.slice().sort(function(a, b){ return worst(a) - worst(b); });
     function cell(v){ return v ? '<td class="estado-cell '+v+'">'+(ESTADO_PLAIN[v]||esc(v))+'</td>' : '<td>—</td>'; }
-    var trs = rows.map(function(x){
+    var trs = sorted.map(function(x){
       return '<tr><td>'+esc(x.rack)+'</td>'+cell(x.gabinete)+cell(x.pintura)+cell(x.anclaje)+'</tr>';
     }).join("");
     return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">GABINETE</th><th class="hd">PINTURA</th><th class="hd">ANCLAJE</th></tr>'+trs+'</table>';
+  }
+
+  function renderUbicacionesTable(rows, emptyMsg){
+    if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
+    var trs = rows.map(function(x){
+      return '<tr><td>'+esc(x.rack)+'</td><td>'+(x.direccion?esc(x.direccion):"—")+'</td><td>'+(x.barrio?esc(x.barrio):"—")+'</td><td style="text-align:center;">'+(x.llave?esc(x.llave):"—")+'</td></tr>';
+    }).join("");
+    return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">DIRECCIÓN</th><th class="hd">BARRIO</th><th class="hd">¿LLAVE ADICIONAL?</th></tr>'+trs+'</table>';
   }
 
   function renderPatcheraTable(rows, emptyMsg){
@@ -2825,7 +2872,8 @@
 
   function renderIncidenciasTable(rows, emptyMsg){
     if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
-    var trs = rows.map(function(x){
+    var sorted = sortBySeverity(rows, function(x){ return x.estado; });
+    var trs = sorted.map(function(x){
       return '<tr><td>'+esc(x.rack)+'</td><td class="estado-cell '+x.estado+'">'+(ESTADO_PLAIN[x.estado]||esc(x.estado))+'</td><td>'+(x.detalle?esc(x.detalle):"—")+'</td></tr>';
     }).join("");
     return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">ESTADO</th><th class="hd">DETALLE</th></tr>'+trs+'</table>';
@@ -3251,6 +3299,7 @@
 
   /* ============ INFORMES COMPARATIVOS (admin + cliente) ============ */
   var COMPARATIVE_REPORTS = [
+    { key:"ubicaciones", icon:"📍", title:"Ubicaciones de RACK" },
     { key:"cerraduras",  icon:"🔒", title:"Racks con Cerraduras Dañadas" },
     { key:"termicos",    icon:"🌡️", title:"Racks con Sensores Térmicos" },
     { key:"patchera",    icon:"🗂️", title:"Racks con Patchera y Organizador de Cable" },
@@ -3349,7 +3398,7 @@
   }
 
   function statusCountsFromRows(rows){
-    var counts = { BIEN:0, REGULAR:0, MAL:0 };
+    var counts = { MAL:0, REGULAR:0, BIEN:0 };
     rows.forEach(function(x){ if(counts.hasOwnProperty(x.estado)) counts[x.estado]++; });
     return counts;
   }
@@ -3357,7 +3406,7 @@
   function renderStatusBarChart(counts){
     var total = counts.BIEN + counts.REGULAR + counts.MAL;
     if(!total) return '<div class="exec-empty-note">No hay datos para graficar.</div>';
-    return ["BIEN","REGULAR","MAL"].map(function(k){
+    return ["MAL","REGULAR","BIEN"].map(function(k){
       var pct = Math.round((counts[k] / total) * 100);
       return '<div class="exec-bar-row">'
         + '<span class="exec-bar-label">'+ESTADO_PLAIN[k]+'</span>'
@@ -3367,9 +3416,28 @@
     }).join("");
   }
 
+  function mgmtIntro(text){
+    return '<div class="exec-intro">'+text+'</div>';
+  }
+
   function buildComparativeBody(key, reports){
     var html = "";
-    if(key === "cerraduras"){
+    if(key === "ubicaciones"){
+      var rowsU = collectRackUbicaciones(reports);
+      var conLlave = rowsU.filter(function(x){ return x.llave === "Sí"; }).length;
+      html += '<div class="exec-stats-grid">'
+        + statCardHtml(rowsU.length, "RACKS EN EL LISTADO")
+        + statCardHtml(conLlave, "REQUIEREN LLAVE ADICIONAL", "var(--warn)")
+      + '</div>';
+      html += mgmtIntro(
+        'Este listado reúne la ubicación de <b>'+rowsU.length+'</b> racks relevados en el período, con su dirección, barrio y si requieren una llave adicional para el acceso. '
+        + (conLlave > 0
+            ? ('<b>'+conLlave+'</b> de ellos requieren coordinar previamente el acceso con una llave adicional.')
+            : 'Ninguno de los racks listados requiere una llave adicional para el acceso.')
+      );
+      html += '<div class="exec-section-title">📋 Listado de ubicaciones</div>' + renderUbicacionesTable(rowsU, "No hay racks con datos de ubicación en este período.");
+
+    } else if(key === "cerraduras"){
       var rows = collectItemStatusByRack(reports, "exterior", "Sistema de Cierre");
       var problems = collectDamagedLocks(reports);
       var pct = rows.length ? Math.round((problems.length / rows.length) * 100) : 0;
@@ -3378,7 +3446,12 @@
         + statCardHtml(problems.length, "CON CERRADURA DAÑADA", "var(--bad)")
         + statCardHtml(pct + "%", "% CON PROBLEMA", "var(--warn)")
       + '</div>';
-      html += '<div class="exec-section-title">📊 Distribución de estado — Sistema de Cierre</div>' + renderStatusBarChart(statusCountsFromRows(rows));
+      html += mgmtIntro(
+        'Sobre un total de <b>'+rows.length+'</b> racks evaluados en el período, <b>'+problems.length+'</b> presentan algún problema en el sistema de cierre ('+pct+'% del total relevado). '
+        + 'Se recomienda priorizar la reposición de estas cerraduras para preservar la seguridad física de las instalaciones y evitar accesos no autorizados.'
+      );
+      html += '<div class="exec-section-title">📊 Panorama general</div>' + renderPieChart(statusCountsFromRows(rows), { BIEN:"#1E8E5A", REGULAR:"#B9790B", MAL:"#C6362E" });
+      html += '<div class="exec-section-title">📈 Detalle de estado — Sistema de Cierre</div>' + renderStatusBarChart(statusCountsFromRows(rows));
       html += '<div class="exec-section-title">📋 Detalle de racks con cerraduras dañadas</div>' + renderRackEstadoTable(problems, "No se detectaron cerraduras dañadas en este período. 🎉");
 
     } else if(key === "termicos"){
@@ -3390,7 +3463,12 @@
         + statCardHtml(withSensor.length, "CON SENSOR TÉRMICO", "var(--ok)")
         + statCardHtml(pctT + "%", "COBERTURA")
       + '</div>';
-      html += '<div class="exec-section-title">📊 Distribución de estado — Regulador de Temperatura</div>' + renderStatusBarChart(statusCountsFromRows(rowsT));
+      html += mgmtIntro(
+        'De los <b>'+reports.length+'</b> racks revisados en el período, <b>'+withSensor.length+'</b> cuentan con regulador de temperatura instalado y en funcionamiento, lo que representa una cobertura del <b>'+pctT+'%</b>. '
+        + 'Contar con este equipamiento reduce el riesgo de fallas por sobrecalentamiento y prolonga la vida útil de los equipos alojados.'
+      );
+      html += '<div class="exec-section-title">📊 Panorama general</div>' + renderPieChart(statusCountsFromRows(rowsT), { BIEN:"#1E8E5A", REGULAR:"#B9790B", MAL:"#C6362E" });
+      html += '<div class="exec-section-title">📈 Detalle de estado — Regulador de Temperatura</div>' + renderStatusBarChart(statusCountsFromRows(rowsT));
       html += '<div class="exec-section-title">📋 Racks equipados con sensor térmico</div>' + renderRackEstadoTable(withSensor, "No se registraron racks con sensor térmico funcionando en este período.");
 
     } else if(key === "patchera"){
@@ -3402,18 +3480,29 @@
         + statCardHtml(rowsP.length, "RACKS CON ALGUNA MEJORA")
         + statCardHtml(withBoth, "CON AMBAS", "var(--ok)")
       + '</div>';
-      html += '<div class="exec-section-title">📊 Comparativa de colocación</div>';
+      html += mgmtIntro(
+        'Durante el período se realizaron mejoras de organización de cableado en <b>'+rowsP.length+'</b> racks: se instaló patchera en '+withPatchera+', organizador en '+withOrganizador+', y ambas mejoras en conjunto en '+withBoth+' racks. '
+        + 'Estas intervenciones mejoran la prolijidad del cableado y facilitan el mantenimiento futuro, reduciendo tiempos de intervención ante nuevos incidentes.'
+      );
+      html += '<div class="exec-section-title">📊 Panorama general</div>' + renderPieChart({ "Solo Patchera": withPatchera - withBoth, "Solo Organizador": withOrganizador - withBoth, "Ambas mejoras": withBoth });
+      html += '<div class="exec-section-title">📈 Comparativa de colocación</div>';
       html += renderCountBarChart({ "Patchera": withPatchera, "Organizador": withOrganizador, "Ambas": withBoth }, function(){ return "var(--ink)"; });
       html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderPatcheraTable(rowsP, "No se registró colocación de patchera ni organizador en este período.");
 
     } else if(key === "incidencias"){
       var rowsI = collectCriticalIncidents(reports);
       var countsI = statusCountsFromRows(rowsI);
+      var pctI = reports.length ? Math.round((rowsI.length/reports.length)*100) : 0;
       html += '<div class="exec-stats-grid">'
         + statCardHtml(rowsI.length, "RACKS CON INCIDENCIA", "var(--bad)")
-        + statCardHtml(reports.length ? Math.round((rowsI.length/reports.length)*100)+"%" : "0%", "% DEL PERÍODO")
+        + statCardHtml(pctI + "%", "% DEL PERÍODO")
       + '</div>';
-      html += '<div class="exec-section-title">📊 Estado de los racks con incidencia</div>' + renderStatusBarChart(countsI);
+      html += mgmtIntro(
+        'Se registraron <b>'+rowsI.length+'</b> racks con incidencias críticas durante el período ('+pctI+'% del total relevado). '
+        + 'Estas situaciones requieren seguimiento prioritario por su impacto potencial en la continuidad del servicio y deben resolverse en el corto plazo.'
+      );
+      html += '<div class="exec-section-title">📊 Panorama general</div>' + renderPieChart(countsI, { BIEN:"#1E8E5A", REGULAR:"#B9790B", MAL:"#C6362E" }, "No hay datos de estado para graficar.");
+      html += '<div class="exec-section-title">📈 Estado de los racks con incidencia</div>' + renderStatusBarChart(countsI);
       html += '<div class="exec-section-title">📋 Detalle de incidencias</div>' + renderIncidenciasTable(rowsI, "No se registraron incidencias críticas en este período. 🎉");
 
     } else if(key === "gabinete"){
@@ -3423,8 +3512,18 @@
         rowsG.forEach(function(x){ if(x[field] && c.hasOwnProperty(x[field])) c[x[field]]++; });
         return c;
       }
+      var countsGabAll = { MAL:0, REGULAR:0, BIEN:0 };
+      ["gabinete","pintura","anclaje"].forEach(function(f){
+        var c = countsFor(f);
+        countsGabAll.BIEN += c.BIEN; countsGabAll.REGULAR += c.REGULAR; countsGabAll.MAL += c.MAL;
+      });
       html += '<div class="exec-stats-grid">' + statCardHtml(rowsG.length, "RACKS CON DATOS CARGADOS") + '</div>';
-      html += '<div class="exec-section-title">📊 Distribución por componente</div>';
+      html += mgmtIntro(
+        'Se evaluaron <b>'+rowsG.length+'</b> racks en sus componentes estructurales (gabinete, pintura y anclaje). '
+        + 'Mantener estos elementos en buen estado preserva la vida útil de la infraestructura y su aspecto institucional de cara a los vecinos.'
+      );
+      html += '<div class="exec-section-title">📊 Panorama general (los 3 componentes en conjunto)</div>' + renderPieChart(countsGabAll, { BIEN:"#1E8E5A", REGULAR:"#B9790B", MAL:"#C6362E" });
+      html += '<div class="exec-section-title">📈 Distribución por componente</div>';
       html += '<div class="exec-dual-chart">'
         + '<div class="exec-dual-col"><div class="exec-subhead">Gabinete</div>' + renderStatusBarChart(countsFor("gabinete")) + '</div>'
         + '<div class="exec-dual-col"><div class="exec-subhead">Pintura</div>' + renderStatusBarChart(countsFor("pintura")) + '</div>'
@@ -3435,13 +3534,23 @@
     } else if(key === "bisagras"){
       var rowsB = collectItemStatusByRack(reports, "interior", "Bisagras");
       html += '<div class="exec-stats-grid">' + statCardHtml(rowsB.length, "RACKS EVALUADOS") + '</div>';
-      html += '<div class="exec-section-title">📊 Distribución de estado — Bisagras</div>' + renderStatusBarChart(statusCountsFromRows(rowsB));
+      html += mgmtIntro(
+        'Se relevó el estado de las bisagras en <b>'+rowsB.length+'</b> racks durante el período. '
+        + 'Las bisagras en mal estado dificultan el acceso seguro al gabinete y aumentan el riesgo de daños al equipamiento durante las tareas de mantenimiento.'
+      );
+      html += '<div class="exec-section-title">📊 Panorama general</div>' + renderPieChart(statusCountsFromRows(rowsB), { BIEN:"#1E8E5A", REGULAR:"#B9790B", MAL:"#C6362E" });
+      html += '<div class="exec-section-title">📈 Detalle de estado — Bisagras</div>' + renderStatusBarChart(statusCountsFromRows(rowsB));
       html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderRackEstadoTable(rowsB, "No hay datos cargados de bisagras en este período.");
 
     } else if(key === "burletes"){
       var rowsBu = collectItemStatusByRack(reports, "termico", "Burletes");
       html += '<div class="exec-stats-grid">' + statCardHtml(rowsBu.length, "RACKS EVALUADOS") + '</div>';
-      html += '<div class="exec-section-title">📊 Distribución de estado — Burletes</div>' + renderStatusBarChart(statusCountsFromRows(rowsBu));
+      html += mgmtIntro(
+        'Se relevó el estado de los burletes en <b>'+rowsBu.length+'</b> racks durante el período. '
+        + 'Los burletes en mal estado permiten el ingreso de humedad y polvo al gabinete, afectando el funcionamiento y la vida útil del equipamiento interno.'
+      );
+      html += '<div class="exec-section-title">📊 Panorama general</div>' + renderPieChart(statusCountsFromRows(rowsBu), { BIEN:"#1E8E5A", REGULAR:"#B9790B", MAL:"#C6362E" });
+      html += '<div class="exec-section-title">📈 Detalle de estado — Burletes</div>' + renderStatusBarChart(statusCountsFromRows(rowsBu));
       html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderRackEstadoTable(rowsBu, "No hay datos cargados de burletes en este período.");
 
     } else if(key === "materiales"){
@@ -3452,7 +3561,12 @@
         + statCardHtml(matKeys.length, "TIPOS DE MATERIAL")
         + statCardHtml(totalUnidades, "UNIDADES TOTALES", "var(--accent)")
       + '</div>';
-      html += '<div class="exec-section-title">📊 Cantidad necesaria por material</div>';
+      html += mgmtIntro(
+        'En base a las tareas realizadas por los técnicos durante el período, se proyecta la necesidad de adquirir <b>'+totalUnidades+'</b> unidades distribuidas en <b>'+matKeys.length+'</b> tipos de materiales distintos. '
+        + 'Esta información permite anticipar la compra de insumos y evitar demoras en las próximas intervenciones de mantenimiento.'
+      );
+      html += '<div class="exec-section-title">📊 Panorama general (participación por material)</div>' + renderPieChart(matData.totals, null, "No se registraron materiales a adquirir en este período.");
+      html += '<div class="exec-section-title">📈 Cantidad necesaria por material</div>';
       html += renderCountBarChart(matData.totals, function(){ return "var(--accent)"; });
       html += '<div class="exec-section-title">📋 Detalle por material y rack</div>' + renderMaterialesTable(matData);
     }
