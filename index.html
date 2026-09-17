@@ -190,6 +190,7 @@
   .tag-control{background:#E9EAEC;color:var(--muted);}
   .tag-drive{background:var(--ok-bg);color:var(--ok);}
   .tag-pending{background:#EEE;color:var(--muted-2);}
+  .tag-imported{background:#FFE3D1;color:#B34700;}
   .tracking-link{
     display:inline-flex;align-items:center;gap:6px;
     font-size:13px;font-weight:600;color:var(--ink);
@@ -1229,6 +1230,10 @@
 
   function canCreate(){ return authRole === "admin" || authRole === "tecnico"; }
   function canDelete(){ return authRole === "admin"; }
+  function isImported(r){
+    return !!(r && r.createdByName && r.createdByName.indexOf("Importado") === 0);
+  }
+
   function canEditReport(r){
     if(authRole === "admin") return true;
     if(authRole === "tecnico"){
@@ -1830,6 +1835,7 @@
         var ctrl = esc(r.control.numero || "—");
         var tecnico = esc(r.responsable && r.responsable.nombre ? r.responsable.nombre : "");
         var driveTag = r.driveUpload ? '<span class="tag tag-drive">☁ En Drive</span>' : '<span class="tag tag-pending">Sin subir</span>';
+        var importedTag = isImported(r) ? '<span class="tag tag-imported">IMPORTADO</span>' : '';
         var actions = '<button class="btn btn-outline btn-sm act-view" data-id="'+r.id+'">Ver informe</button>';
         if(canEditReport(r)){
           actions += '<button class="btn btn-outline btn-sm act-edit" data-id="'+r.id+'">Editar</button>';
@@ -1839,7 +1845,7 @@
         }
         html += '<div class="report-card" data-id="'+r.id+'">'
           + '<div class="report-card-info">'
-            + '<div class="report-card-top"><span class="report-card-name">'+name+'</span><span class="tag tag-control">N° '+ctrl+'</span>'+driveTag+'</div>'
+            + '<div class="report-card-top"><span class="report-card-name">'+name+'</span><span class="tag tag-control">N° '+ctrl+'</span>'+driveTag+importedTag+'</div>'
             + '<div class="report-card-meta">'+ (etiqueta? etiqueta+" · ":"") + (ubic? ubic+" · ":"") + (tecnico? "Téc.: "+tecnico+" · ":"") + (fecha||"sin fecha") +'</div>'
           + '</div>'
           + '<div class="report-card-actions">'+actions+'</div>'
@@ -2437,15 +2443,16 @@
   function renderReportStatus(){
     var el = $("#report-drive-status");
     if(!el) return;
+    var importedTag = isImported(state) ? '<span class="tag tag-imported" style="margin-right:8px;">IMPORTADO</span>' : "";
     var d = state.driveUpload;
     if(!d){
-      el.innerHTML = "";
+      el.innerHTML = importedTag;
       return;
     }
     var when = new Date(d.at).toLocaleString("es-AR");
     var linkHtml = d.fileUrl ? ' — <a href="'+esc(d.fileUrl)+'" target="_blank" rel="noopener">ver en Drive</a>' : "";
     var lockNote = (authRole === "tecnico") ? ' · <span style="color:var(--muted-2);">🔒 Ya no se puede editar</span>' : "";
-    el.innerHTML = '<span class="ok-dot"></span><span>Guardado en Drive el '+esc(when)+linkHtml+lockNote+'</span>';
+    el.innerHTML = importedTag + '<span class="ok-dot"></span><span>Guardado en Drive el '+esc(when)+linkHtml+lockNote+'</span>';
   }
 
   /* ============ SETTINGS MODAL ============ */
