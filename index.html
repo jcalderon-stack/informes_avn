@@ -2919,9 +2919,9 @@
     if(!keys.length) return '<div class="exec-empty-note">No se registraron materiales a adquirir en este período.</div>';
     keys.sort(function(a, b){ return data.totals[b] - data.totals[a]; });
     var rows = keys.map(function(k){
-      return '<tr><td>'+esc(k)+'</td><td style="text-align:center;font-weight:700;">'+data.totals[k]+'</td><td style="font-size:11.5px;color:#666;">'+esc(data.byRack[k].join(", "))+'</td></tr>';
+      return '<tr><td>'+esc(k)+'</td><td style="text-align:center;">Furukawa CAT</td><td style="text-align:center;font-weight:700;">'+data.totals[k]+'</td><td style="font-size:11.5px;color:#666;">'+esc(data.byRack[k].join(", "))+'</td></tr>';
     }).join("");
-    return '<table class="rtable"><tr><th class="hd">MATERIAL</th><th class="hd" style="width:16%">CANTIDAD</th><th class="hd" style="width:38%">RACKS</th></tr>'+rows+'</table>';
+    return '<table class="rtable"><tr><th class="hd">MATERIAL</th><th class="hd" style="width:14%">MARCA</th><th class="hd" style="width:14%">CANTIDAD</th><th class="hd" style="width:34%">RACKS</th></tr>'+rows+'</table>';
   }
 
   // Racks visitados 2 o más veces dentro del período: se destacan como
@@ -3253,7 +3253,7 @@
       type: "executive",
       filename: filename,
       pdfBase64: base64,
-      dateLabel: fromStr === toStr ? fromStr : (fromStr + " a " + toStr),
+      dateLabel: (!fromStr || !toStr) ? "Histórico" : (fromStr === toStr ? fromStr : (fromStr + " a " + toStr)),
       usuario: authEmail || "",
       rol: authRole || ""
     };
@@ -3299,16 +3299,31 @@
 
   /* ============ INFORMES COMPARATIVOS (admin + cliente) ============ */
   var COMPARATIVE_REPORTS = [
-    { key:"ubicaciones", icon:"📍", title:"Ubicaciones de RACK" },
-    { key:"cerraduras",  icon:"🔒", title:"Racks con Cerraduras Dañadas" },
-    { key:"termicos",    icon:"🌡️", title:"Racks con Sensores Térmicos" },
-    { key:"patchera",    icon:"🗂️", title:"Racks con Patchera y Organizador de Cable" },
-    { key:"incidencias", icon:"🚨", title:"Informe de Incidencias Críticas" },
-    { key:"gabinete",    icon:"🎨", title:"Informe de Gabinetes / Pintura / Anclaje" },
-    { key:"bisagras",    icon:"🔩", title:"Informe de Bisagras" },
-    { key:"burletes",    icon:"🌬️", title:"Informe de Burletes" },
-    { key:"materiales",  icon:"🧰", title:"Informe de Materiales Necesarios" }
+    { key:"ubicaciones", icon:"📍", title:"Ubicaciones de RACK", mode:"latest" },
+    { key:"cerraduras",  icon:"🔒", title:"Racks con Cerraduras Dañadas", mode:"latest" },
+    { key:"termicos",    icon:"🌡️", title:"Racks con Sensores Térmicos", mode:"latest" },
+    { key:"patchera",    icon:"🗂️", title:"Racks con Patchera y Organizador de Cable", mode:"latest" },
+    { key:"incidencias", icon:"🚨", title:"Informe de Incidencias Críticas", mode:"range" },
+    { key:"gabinete",    icon:"🎨", title:"Informe de Gabinetes / Pintura / Anclaje", mode:"latest" },
+    { key:"bisagras",    icon:"🔩", title:"Informe de Bisagras", mode:"latest" },
+    { key:"burletes",    icon:"🌬️", title:"Informe de Burletes", mode:"latest" },
+    { key:"materiales",  icon:"🧰", title:"Informe de Materiales Necesarios", mode:"materiales" }
   ];
+
+  // Para los informes de "estado actual": si un mismo rack tiene varios
+  // relevamientos, nos quedamos con el más nuevo (reportsCache ya viene
+  // ordenado por fecha de creación, de más reciente a más antiguo).
+  function latestPerRack(reports){
+    var seen = {};
+    var out = [];
+    reports.forEach(function(r){
+      var key = r.control.nombreRack ? r.control.nombreRack : ("__sin_nombre_" + r.id);
+      if(seen[key]) return;
+      seen[key] = true;
+      out.push(r);
+    });
+    return out;
+  }
 
   var compCurrentKey = "";
   var compCurrentFrom = "";
@@ -3325,11 +3340,26 @@
     return null;
   }
 
+  // Estos informes no piden fecha: usan TODOS los relevamientos cargados,
+  // y si un mismo rack tiene más de un informe, se queda con el más nuevo.
+  var NO_DATE_LATEST_KEYS = ["ubicaciones", "cerraduras", "termicos", "patchera", "gabinete", "bisagras", "burletes"];
+
+  function dedupeLatestPerRack(reports){
+    var byRack = {};
+    reports.forEach(function(r){
+      var name = r.control.nombreRack || "Rack sin nombre";
+      if(!byRack[name] || (r.createdAt || 0) > (byRack[name].createdAt || 0)){
+        byRack[name] = r;
+      }
+    });
+    return Object.keys(byRack).map(function(k){ return byRack[k]; });
+  }
+
   function renderComparativosMenu(){
     var el = $("#view-comparativos-scroll");
     var html = '<div style="max-width:820px;width:100%;margin:0 auto;padding:22px 16px 60px;">';
     html += '<div class="home-head"><h1>Informes Comparativos</h1></div>';
-    html += '<div class="modal-sub" style="margin-bottom:18px;">Elegí un informe específico para verlo con sus propios gráficos, filtrado por el período que quieras.</div>';
+    html += '<div class="modal-sub" style="margin-bottom:18px;">Elegí un informe específico. La mayoría se genera al instante con el estado más reciente de cada rack; "Incidencias Críticas" y "Materiales Necesarios" te dejan elegir el período.</div>';
     html += '<div class="comp-menu-grid">';
     COMPARATIVE_REPORTS.forEach(function(r){
       html += '<button type="button" class="comp-menu-card" data-key="'+r.key+'">'
@@ -3344,13 +3374,34 @@
 
     $("#btn-comp-home").onclick = goHome;
     $all(".comp-menu-card").forEach(function(btn){
-      btn.onclick = function(){ renderComparativoSetup(btn.dataset.key); };
+      btn.onclick = function(){
+        var key = btn.dataset.key;
+        if(NO_DATE_LATEST_KEYS.indexOf(key) !== -1){
+          var reports = dedupeLatestPerRack(reportsCache);
+          if(!reports.length){ toast("Todavía no hay relevamientos cargados"); return; }
+          renderComparativoReport(key, null, null, reports);
+        } else if(key === "materiales"){
+          renderMaterialesSetup();
+        } else {
+          renderComparativoSetup(key);
+        }
+      };
     });
   }
 
   function renderComparativoSetup(key){
     var cfg = comparativeReportByKey(key);
     if(!cfg) return;
+
+    if(cfg.mode === "materiales"){
+      renderMaterialesSetup();
+      return;
+    }
+    if(cfg.mode === "latest"){
+      generateLatestComparativo(key);
+      return;
+    }
+
     var el = $("#view-comparativos-scroll");
     var today = new Date().toISOString().slice(0, 10);
     var html = '<div style="max-width:820px;width:100%;margin:0 auto;padding:22px 16px 60px;">';
@@ -3390,6 +3441,89 @@
       var reports = reportsInRange(from, to);
       if(!reports.length){ toast("No hay relevamientos cargados en ese período"); return; }
       renderComparativoReport(key, from, to, reports);
+    };
+  }
+
+  // Informes de "estado actual" (sin selector de fecha): usa todos los
+  // relevamientos cargados, quedándose con el más reciente por rack.
+  function generateLatestComparativo(key){
+    if(!reportsCache.length){
+      toast("Todavía no hay relevamientos cargados");
+      renderComparativosMenu();
+      return;
+    }
+    var reports = latestPerRack(reportsCache);
+    renderComparativoReport(key, null, null, reports);
+  }
+
+  // Informe de Materiales Necesarios: tres formas de generarlo.
+  function renderMaterialesSetup(){
+    var cfg = comparativeReportByKey("materiales");
+    var el = $("#view-comparativos-scroll");
+    var today = new Date().toISOString().slice(0, 10);
+    var html = '<div style="max-width:820px;width:100%;margin:0 auto;padding:22px 16px 60px;">';
+    html += '<div class="exec-setup-box">'
+      + '<h1>'+cfg.icon+' '+esc(cfg.title)+'</h1>'
+      + '<div class="sub">Elegí cómo querés generarlo.</div>'
+      + '<div style="display:flex;flex-direction:column;gap:10px;margin:18px 0 6px;">'
+        + '<button class="btn btn-outline" id="btn-mat-historico" style="justify-content:center;">📚 Histórico (todos los informes)</button>'
+        + '<button class="btn btn-outline" id="btn-mat-semana" style="justify-content:center;">🗓️ Última semana</button>'
+        + '<button class="btn btn-outline" id="btn-mat-fecha-toggle" style="justify-content:center;">📅 A pedido por fecha</button>'
+      + '</div>'
+      + '<div id="mat-date-picker" style="display:none;text-align:left;margin-top:10px;">'
+        + '<div class="field-row">'
+          + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Desde</label><input type="date" id="mat-date-from" value="'+today+'"></div>'
+          + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Hasta</label><input type="date" id="mat-date-to" value="'+today+'"></div>'
+        + '</div>'
+        + '<div class="exec-count-hint" id="mat-count-hint"></div>'
+        + '<button class="btn btn-accent" id="btn-mat-generate" style="width:100%;justify-content:center;">Generar informe</button>'
+      + '</div>'
+      + '<button class="btn btn-outline btn-sm" id="btn-mat-cancel" style="margin-top:16px;">Volver</button>'
+    + '</div></div>';
+    el.innerHTML = html;
+
+    $("#btn-mat-cancel").onclick = renderComparativosMenu;
+
+    $("#btn-mat-historico").onclick = function(){
+      if(!reportsCache.length){ toast("Todavía no hay relevamientos cargados"); return; }
+      renderComparativoReport("materiales", null, null, reportsCache);
+    };
+
+    $("#btn-mat-semana").onclick = function(){
+      var toD = new Date();
+      var fromD = new Date();
+      fromD.setDate(toD.getDate() - 6);
+      var fromStr = fromD.toISOString().slice(0, 10);
+      var toStr = toD.toISOString().slice(0, 10);
+      var reports = reportsInRange(fromStr, toStr);
+      if(!reports.length){ toast("No hay relevamientos cargados en la última semana"); return; }
+      renderComparativoReport("materiales", fromStr, toStr, reports);
+    };
+
+    $("#btn-mat-fecha-toggle").onclick = function(){
+      $("#mat-date-picker").style.display = "block";
+      updateMatHint();
+    };
+
+    function updateMatHint(){
+      var from = $("#mat-date-from").value;
+      var to = $("#mat-date-to").value;
+      if(!from || !to){ $("#mat-count-hint").textContent = ""; return; }
+      if(from > to){ $("#mat-count-hint").textContent = "La fecha 'Desde' no puede ser posterior a 'Hasta'."; return; }
+      var n = reportsInRange(from, to).length;
+      $("#mat-count-hint").textContent = n + (n === 1 ? " relevamiento cargado en ese período." : " relevamientos cargados en ese período.");
+    }
+    $("#mat-date-from").addEventListener("input", updateMatHint);
+    $("#mat-date-to").addEventListener("input", updateMatHint);
+
+    $("#btn-mat-generate").onclick = function(){
+      var from = $("#mat-date-from").value;
+      var to = $("#mat-date-to").value;
+      if(!from || !to){ toast("Elegí las dos fechas del período"); return; }
+      if(from > to){ toast("La fecha 'Desde' no puede ser posterior a 'Hasta'"); return; }
+      var reports = reportsInRange(from, to);
+      if(!reports.length){ toast("No hay relevamientos cargados en ese período"); return; }
+      renderComparativoReport("materiales", from, to, reports);
     };
   }
 
@@ -3568,7 +3702,9 @@
       html += '<div class="exec-section-title">📊 Panorama general (participación por material)</div>' + renderPieChart(matData.totals, null, "No se registraron materiales a adquirir en este período.");
       html += '<div class="exec-section-title">📈 Cantidad necesaria por material</div>';
       html += renderCountBarChart(matData.totals, function(){ return "var(--accent)"; });
-      html += '<div class="exec-section-title">📋 Detalle por material y rack</div>' + renderMaterialesTable(matData);
+      html += '<div class="exec-section-title">📋 Detalle por material y rack</div>';
+      html += '<div class="exec-highlight">🏷️ <b>Especificación de marca:</b> todos los materiales listados deben adquirirse de marca <b>Furukawa CAT</b>.</div>';
+      html += renderMaterialesTable(matData);
     }
     return html;
   }
@@ -3586,9 +3722,17 @@
       + '<span class="exec-logo-badge"><img src="'+LOGO_QUICKSOLUTIONS+'" alt="Support QSS"></span>'
       + '<img src="'+LOGO_PNCIT+'" alt="PNC IT">'
     + '</div>';
+    var periodLabel;
+    if(fromStr && toStr){
+      periodLabel = fmtDateRangeLong(fromStr, toStr);
+    } else if(key === "materiales"){
+      periodLabel = "Histórico — todos los relevamientos cargados";
+    } else {
+      periodLabel = "Histórico — informe más reciente por rack, todos los relevamientos cargados";
+    }
     html += '<div class="exec-title">'
       + '<h1>'+cfg.icon+' '+esc(cfg.title)+'</h1>'
-      + '<div class="sub">'+esc(fmtDateRangeLong(fromStr, toStr))+'</div>'
+      + '<div class="sub">'+esc(periodLabel)+'</div>'
     + '</div>';
     html += buildComparativeBody(key, reports);
     html += '<div class="exec-footer">'
@@ -3617,6 +3761,7 @@
   function comparativoFilename(key, fromStr, toStr){
     var cfg = comparativeReportByKey(key);
     var slugTitle = slug(cfg ? cfg.title : key);
+    if(!fromStr || !toStr) return "Comparativo_" + slugTitle + "_historico.pdf";
     return fromStr === toStr
       ? ("Comparativo_" + slugTitle + "_" + slug(fromStr) + ".pdf")
       : ("Comparativo_" + slugTitle + "_" + slug(fromStr) + "_a_" + slug(toStr) + ".pdf");
