@@ -2753,6 +2753,18 @@
     return rows;
   }
 
+  function collectImportedList(reports){
+    return reports.filter(isImported).map(function(r){
+      return {
+        rack: r.control.nombreRack || "Rack sin nombre",
+        fecha: r.control.fecha || "",
+        ubicacion: r.control.ubicacion || "",
+        barrio: r.control.barrio || "",
+        tecnico: (r.responsable && r.responsable.nombre) || ""
+      };
+    }).sort(function(a, b){ return (a.fecha || "").localeCompare(b.fecha || ""); });
+  }
+
   function collectItemStatusByRack(reports, sectionKey, itemName){
     var rows = [];
     reports.forEach(function(r){
@@ -2867,6 +2879,14 @@
       return '<tr><td>'+esc(x.rack)+'</td><td>'+(x.direccion?esc(x.direccion):"—")+'</td><td>'+(x.barrio?esc(x.barrio):"—")+'</td><td style="text-align:center;">'+(x.llave?esc(x.llave):"—")+'</td></tr>';
     }).join("");
     return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">DIRECCIÓN</th><th class="hd">BARRIO</th><th class="hd">¿LLAVE ADICIONAL?</th></tr>'+trs+'</table>';
+  }
+
+  function renderImportedTable(rows, emptyMsg){
+    if(!rows.length) return '<div class="exec-empty-note">'+esc(emptyMsg)+'</div>';
+    var trs = rows.map(function(x){
+      return '<tr><td>'+esc(x.rack)+'</td><td>'+(x.fecha?esc(fmtDate(x.fecha)):"—")+'</td><td>'+(x.ubicacion?esc(x.ubicacion):"—")+'</td><td>'+(x.barrio?esc(x.barrio):"—")+'</td><td>'+(x.tecnico?esc(x.tecnico):"—")+'</td></tr>';
+    }).join("");
+    return '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd">FECHA</th><th class="hd">UBICACIÓN</th><th class="hd">BARRIO</th><th class="hd">TÉCNICO</th></tr>'+trs+'</table>';
   }
 
   function renderPatcheraTable(rows, emptyMsg){
@@ -3314,7 +3334,8 @@
     { key:"gabinete",    icon:"🎨", title:"Informe de Gabinetes / Pintura / Anclaje", mode:"latest" },
     { key:"bisagras",    icon:"🔩", title:"Informe de Bisagras", mode:"latest" },
     { key:"burletes",    icon:"🌬️", title:"Informe de Burletes", mode:"latest" },
-    { key:"materiales",  icon:"🧰", title:"Informe de Materiales Necesarios", mode:"materiales" }
+    { key:"materiales",  icon:"🧰", title:"Informe de Materiales Necesarios", mode:"materiales" },
+    { key:"importados",  icon:"📥", title:"Relevamiento IMPORTADOS", mode:"imported" }
   ];
 
   // Para los informes de "estado actual": si un mismo rack tiene varios
@@ -3408,6 +3429,10 @@
       generateLatestComparativo(key);
       return;
     }
+    if(cfg.mode === "imported"){
+      generateImportedComparativo(key);
+      return;
+    }
 
     var el = $("#view-comparativos-scroll");
     var today = new Date().toISOString().slice(0, 10);
@@ -3460,6 +3485,19 @@
       return;
     }
     var reports = latestPerRack(reportsCache);
+    renderComparativoReport(key, null, null, reports);
+  }
+
+  // Relevamientos IMPORTADOS: todos los registros marcados como importados,
+  // sin filtrar por fecha ni quedarse solo con el más reciente por rack
+  // (es un listado de auditoría de la migración, no del estado actual).
+  function generateImportedComparativo(key){
+    var reports = reportsCache.filter(isImported);
+    if(!reports.length){
+      toast("Todavía no hay relevamientos importados");
+      renderComparativosMenu();
+      return;
+    }
     renderComparativoReport(key, null, null, reports);
   }
 
@@ -3712,6 +3750,20 @@
       html += '<div class="exec-section-title">📋 Detalle por material y rack</div>';
       html += '<div class="exec-highlight">🏷️ <b>Especificación de marca:</b> todos los materiales listados deben adquirirse de marca <b>Furukawa CAT</b>.</div>';
       html += renderMaterialesTable(matData);
+
+    } else if(key === "importados"){
+      var rowsImp = collectImportedList(reports);
+      var uniqueRacks = {};
+      rowsImp.forEach(function(x){ uniqueRacks[x.rack] = true; });
+      html += '<div class="exec-stats-grid">'
+        + statCardHtml(rowsImp.length, "RELEVAMIENTOS IMPORTADOS")
+        + statCardHtml(Object.keys(uniqueRacks).length, "RACKS DISTINTOS")
+      + '</div>';
+      html += mgmtIntro(
+        'Este informe reúne los <b>'+rowsImp.length+'</b> relevamientos incorporados a la app a partir de registros históricos en formato Word, correspondientes a <b>'+Object.keys(uniqueRacks).length+'</b> racks distintos. '
+        + 'Se recomienda revisar y completar los campos que no pudieron migrarse automáticamente (barrio, técnico asignado, llave adicional) en cada uno.'
+      );
+      html += '<div class="exec-section-title">📋 Listado de relevamientos importados</div>' + renderImportedTable(rowsImp, "No hay relevamientos importados cargados todavía.");
     }
     return html;
   }
@@ -3734,6 +3786,8 @@
       periodLabel = fmtDateRangeLong(fromStr, toStr);
     } else if(key === "materiales"){
       periodLabel = "Histórico — todos los relevamientos cargados";
+    } else if(key === "importados"){
+      periodLabel = "Todos los relevamientos importados (histórico de Word)";
     } else {
       periodLabel = "Histórico — informe más reciente por rack, todos los relevamientos cargados";
     }
