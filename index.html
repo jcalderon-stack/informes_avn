@@ -3081,7 +3081,8 @@
   var execCurrentTo = "";
   var execCurrentReports = [];
 
-  function renderExecutiveReport(fromStr, toStr, reports){
+  function buildExecutiveBody(fromStr, toStr, reports, opts){
+    opts = opts || {};
     execCurrentFrom = fromStr;
     execCurrentTo = toStr;
     execCurrentReports = reports;
@@ -3115,12 +3116,12 @@
 
     html += '<div class="exec-title">'
       + '<h1>📋 Informe Ejecutivo de Mantenimiento</h1>'
-      + '<div class="sub">'+esc(fmtDateRangeLong(fromStr, toStr))+'</div>'
+      + '<div class="sub">'+esc(opts.subtitle || fmtDateRangeLong(fromStr, toStr))+'</div>'
     + '</div>';
 
-    var periodoTexto = (fromStr === toStr)
+    var periodoTexto = opts.periodoTexto || ((fromStr === toStr)
       ? ('el <b>'+esc(fmtDateLong(fromStr))+'</b>')
-      : ('entre el <b>'+esc(fmtDateShort(fromStr))+'</b> y el <b>'+esc(fmtDateShort(toStr))+'</b>');
+      : ('entre el <b>'+esc(fmtDateShort(fromStr))+'</b> y el <b>'+esc(fmtDateShort(toStr))+'</b>'));
 
     html += '<div class="exec-intro">'
       + 'Este informe técnico resume el relevamiento, las mejoras implementadas y las tareas correctivas ejecutadas '+periodoTexto+' '
@@ -3253,6 +3254,12 @@
     + '</div>';
 
     html += '</div>';
+
+    return html;
+  }
+
+  function renderExecutiveReport(fromStr, toStr, reports){
+    var html = buildExecutiveBody(fromStr, toStr, reports);
 
     $("#view-executive-scroll").innerHTML = ''
       + '<div class="exec-actions">'
@@ -3430,7 +3437,7 @@
       return;
     }
     if(cfg.mode === "imported"){
-      generateImportedComparativo(key);
+      renderImportadosFullReport();
       return;
     }
 
@@ -3488,17 +3495,41 @@
     renderComparativoReport(key, null, null, reports);
   }
 
-  // Relevamientos IMPORTADOS: todos los registros marcados como importados,
-  // sin filtrar por fecha ni quedarse solo con el más reciente por rack
-  // (es un listado de auditoría de la migración, no del estado actual).
-  function generateImportedComparativo(key){
+  // Relevamientos IMPORTADOS: mismo contenido completo que el Informe
+  // Entregable al Cliente (intro, gráficos, todas las categorías, detalle
+  // por rack), pero calculado solo sobre los relevamientos importados —
+  // sin filtrar por fecha ni quedarse con el más reciente por rack, porque
+  // acá el objetivo es auditar toda la migración.
+  function renderImportadosFullReport(){
     var reports = reportsCache.filter(isImported);
     if(!reports.length){
       toast("Todavía no hay relevamientos importados");
       renderComparativosMenu();
       return;
     }
-    renderComparativoReport(key, null, null, reports);
+    compCurrentKey = "importados";
+    compCurrentFrom = "";
+    compCurrentTo = "";
+
+    var html = buildExecutiveBody(null, null, reports, {
+      subtitle: "Relevamientos IMPORTADOS — histórico migrado desde Word",
+      periodoTexto: "a partir de los relevamientos importados desde registros históricos en Word"
+    });
+
+    var wrap = '<div class="exec-actions">'
+      + '<button class="btn btn-outline" id="btn-comp-back">← Elegir otro informe</button>'
+      + '<button class="btn btn-outline" id="btn-comp-home2">Inicio</button>'
+      + '<button class="btn btn-outline" id="btn-comp-print">🖨 Imprimir</button>'
+      + (authRole === "admin" ? '<button class="btn btn-accent" id="btn-comp-save-drive">☁ Guardar en Drive</button>' : '')
+    + '</div>'
+    + '<div id="comparativo-sheet-wrap">' + html + '</div>';
+
+    $("#view-comparativos-scroll").innerHTML = wrap;
+    $("#btn-comp-back").onclick = renderComparativosMenu;
+    $("#btn-comp-home2").onclick = goHome;
+    $("#btn-comp-print").onclick = function(){ window.print(); };
+    var saveBtn = $("#btn-comp-save-drive");
+    if(saveBtn) saveBtn.onclick = saveComparativoReportToDrive;
   }
 
   // Informe de Materiales Necesarios: tres formas de generarlo.
@@ -3750,20 +3781,6 @@
       html += '<div class="exec-section-title">📋 Detalle por material y rack</div>';
       html += '<div class="exec-highlight">🏷️ <b>Especificación de marca:</b> todos los materiales listados deben adquirirse de marca <b>Furukawa CAT</b>.</div>';
       html += renderMaterialesTable(matData);
-
-    } else if(key === "importados"){
-      var rowsImp = collectImportedList(reports);
-      var uniqueRacks = {};
-      rowsImp.forEach(function(x){ uniqueRacks[x.rack] = true; });
-      html += '<div class="exec-stats-grid">'
-        + statCardHtml(rowsImp.length, "RELEVAMIENTOS IMPORTADOS")
-        + statCardHtml(Object.keys(uniqueRacks).length, "RACKS DISTINTOS")
-      + '</div>';
-      html += mgmtIntro(
-        'Este informe reúne los <b>'+rowsImp.length+'</b> relevamientos incorporados a la app a partir de registros históricos en formato Word, correspondientes a <b>'+Object.keys(uniqueRacks).length+'</b> racks distintos. '
-        + 'Se recomienda revisar y completar los campos que no pudieron migrarse automáticamente (barrio, técnico asignado, llave adicional) en cada uno.'
-      );
-      html += '<div class="exec-section-title">📋 Listado de relevamientos importados</div>' + renderImportedTable(rowsImp, "No hay relevamientos importados cargados todavía.");
     }
     return html;
   }
