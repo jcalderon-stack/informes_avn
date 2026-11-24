@@ -1099,7 +1099,7 @@
       createdAt: Date.now(),
       createdByEmail: authEmail || "",
       createdByName: authName || "",
-      control: {numero:"", fecha:today, nombreRack:"", etiquetaRack:"", ubicacion:"", direccionGPS:"", barrio:"", latitud:"", longitud:"", empresa:"", llaveAdicional:""},
+      control: {numero:"", fecha:today, nombreRack:"", etiquetaRack:"", ubicacion:"", direccionGPS:"", barrio:"", latitud:"", longitud:"", empresa:"", llaveAdicional:"", horasServicio:"Sí", proyecto:""},
       exterior: {items: emptyChecklist(SECTIONS[1].items)},
       interior: {items: emptyChecklist(SECTIONS[2].items)},
       termico: {items: emptyChecklist(SECTIONS[3].items), coolerCantidad:""},
@@ -1200,6 +1200,8 @@
       if(r.control.direccionGPS === undefined) r.control.direccionGPS = "";
       if(r.control.barrio === undefined) r.control.barrio = "";
       if(r.control.llaveAdicional === undefined) r.control.llaveAdicional = "";
+      if(r.control.horasServicio === undefined) r.control.horasServicio = "Sí";
+      if(r.control.proyecto === undefined) r.control.proyecto = "";
     }
     if(r && r.electrica){
       if(r.electrica.conectadoRed === undefined) r.electrica.conectadoRed = "";
@@ -2000,6 +2002,7 @@
     b += '<div class="field-row">' + fieldHTML("control.latitud","Latitud",{placeholder:"-34.385035"}) + fieldHTML("control.longitud","Longitud",{placeholder:"-58.653196"}) + '</div>';
     b += '<div class="field-row single">' + fieldHTML("control.direccionGPS","Dirección GPS",{placeholder:"Se completa sola con Latitud/Longitud", readonly:true}) + '</div>';
     b += '<div class="field-row">' + selectFieldHTML("control.empresa","Empresa",EMPRESAS) + selectFieldHTML("control.llaveAdicional","¿Se necesita llave adicional para acceso?",["Sí","No"]) + '</div>';
+    b += '<div class="field-row">' + selectFieldHTML("control.horasServicio","¿Se utilizaron las horas del servicio para este relevamiento?",["Sí","No"]) + fieldHTML("control.proyecto","Referencia de proyecto (si no se usaron horas del servicio)",{placeholder:"Proyecto XXX"}) + '</div>';
     b += '</div></div>';
     return b;
   }
@@ -2377,6 +2380,7 @@
       + '<tr><td class="lbl">LATITUD</td><td>'+esc(c.latitud||"—")+'</td><td class="lbl">LONGITUD</td><td>'+esc(c.longitud||"—")+'</td></tr>'
       + '<tr><td class="lbl">DIRECCIÓN GPS</td><td colspan="3">'+esc(c.direccionGPS||"—")+'</td></tr>'
       + '<tr><td class="lbl">EMPRESA</td><td>'+esc(c.empresa||"—")+'</td><td class="lbl">LLAVE ADICIONAL</td><td>'+esc(c.llaveAdicional||"—")+'</td></tr>'
+      + '<tr><td class="lbl">HORAS DEL SERVICIO</td><td>'+esc(c.horasServicio||"Sí")+'</td><td class="lbl">PROYECTO</td><td>'+esc(c.proyecto||"—")+'</td></tr>'
     + '</table>';
 
     html += reportSectionTable("📦 EXTERIOR", checklistRowsForReport("exterior", SECTIONS[1].items));
@@ -3884,7 +3888,12 @@
     var daysInMonth = new Date(y, m, 0).getDate();
     var today = localTodayStr();
     var byDate = {};
-    reports.forEach(function(r){ var f = r.control && r.control.fecha; if(f){ (byDate[f] = byDate[f] || []).push(r); } });
+    var projByDate = {};
+    reports.forEach(function(r){
+      var f = r.control && r.control.fecha; if(!f) return;
+      if(r.control.horasServicio === "No"){ (projByDate[f] = projByDate[f] || []).push(r); }
+      else { (byDate[f] = byDate[f] || []).push(r); }
+    });
 
     var days = [], prog = 0, feriadosEnProg = 0, trabajados = 0, faltantes = 0, pendientes = 0, enFeriado = [], extras = [];
     for(var d=1; d<=daysInMonth; d++){
@@ -3897,16 +3906,15 @@
       if(hol){
         st = "feriado";
         if(isSvc) feriadosEnProg++;
-        if(n) enFeriado.push(ds);
       } else if(isSvc){
         prog++;
         if(n){ st = "trabajado"; trabajados++; }
         else if(ds < today){ st = "faltante"; faltantes++; }
         else { st = "pendiente"; pendientes++; }
       } else {
-        if(n){ st = "extra"; extras.push(ds); } else st = "libre";
+        st = "libre";
       }
-      days.push({ ds:ds, d:d, wd:wd, st:st, hol:hol, n:n, isSvc:isSvc });
+      days.push({ ds:ds, d:d, wd:wd, st:st, hol:hol, n:n, isSvc:isSvc, proj:(projByDate[ds]||[]) });
     }
     var programados = prog + feriadosEnProg; // lunes/miércoles/viernes del mes
     var meta = SERVICE_TARGET_DAYS;
@@ -3928,8 +3936,8 @@
     if(alcanzable < meta) txt += ' Por los feriados, este mes solo hay <b>'+alcanzable+'</b> días hábiles posibles, por lo que la meta de '+meta+' no es alcanzable.';
     if(faltantes) txt += ' Hay <b>'+faltantes+'</b> día(s) de servicio ya vencidos sin relevamientos cargados.';
     if(pendientes) txt += ' Quedan <b>'+pendientes+'</b> día(s) de servicio pendientes.';
-    if(enFeriado.length) txt += ' Se registró trabajo en <b>'+enFeriado.length+'</b> feriado(s).';
-    if(extras.length) txt += ' Además se trabajó en <b>'+extras.length+'</b> día(s) fuera del esquema L/Mi/V.';
+    var projTotal = 0; Object.keys(projByDate).forEach(function(k){ projTotal += projByDate[k].length; });
+    if(projTotal) txt += ' Además, <b>'+projTotal+'</b> relevamiento(s) se realizaron por proyecto, sin utilizar las horas del servicio, y no se computan en los días trabajados.';
     h += mgmtIntro(txt);
 
     // Calendario
@@ -3946,17 +3954,17 @@
         var c = cells[i+j];
         if(!c){ h += '<td style="background:#f5f5f5;"></td>'; continue; }
         var col = COL[c.st];
-        var sub = c.st==="feriado" ? '<div style="font-size:9px;line-height:1.15;">'+esc(c.hol)+(c.n?' ⚠ trabajado':'')+'</div>'
+        var sub = c.st==="feriado" ? '<div style="font-size:9px;line-height:1.15;">'+esc(c.hol)+'</div>'
           : (c.st==="trabajado" ? '<div style="font-size:10px;">✔ '+c.n+' rack'+(c.n===1?'':'s')+'</div>'
           : (c.st==="faltante" ? '<div style="font-size:10px;">✘ sin datos</div>'
           : (c.st==="pendiente" ? '<div style="font-size:10px;">⏳ pendiente</div>'
-          : (c.st==="extra" ? '<div style="font-size:10px;">'+c.n+' rack'+(c.n===1?'':'s')+' (extra)</div>' : ''))));
+          : "")));
         h += '<td style="background:'+col[0]+';border:1px solid #ccc;vertical-align:top;height:58px;padding:3px;text-align:center;"><div style="font-weight:700;color:'+col[1]+';">'+c.d+(c.isSvc && c.st!=="feriado"?' ●':'')+'</div>'+sub+'</td>';
       }
       h += '</tr>';
     }
     h += '</table>';
-    h += '<div style="font-size:11px;color:#666;margin:6px 0 4px;">● día de servicio (L/Mi/V) · <span style="color:#1E8E5A;">verde</span>: trabajado · <span style="color:#C6362E;">rojo</span>: sin trabajo registrado · <span style="color:#B9790B;">amarillo</span>: pendiente · <span style="color:#6B4FB3;">violeta</span>: feriado / no laborable · <span style="color:#2B6CB0;">azul</span>: trabajo fuera de L/Mi/V</div>';
+    h += '<div style="font-size:11px;color:#666;margin:6px 0 4px;">● día de servicio (L/Mi/V) · <span style="color:#1E8E5A;">verde</span>: trabajado · <span style="color:#C6362E;">rojo</span>: sin trabajo registrado · <span style="color:#B9790B;">amarillo</span>: pendiente · <span style="color:#6B4FB3;">violeta</span>: feriado / no laborable · solo se computan relevamientos con horas del servicio</div>';
 
     // Gráfico
     var pie = {};
@@ -3968,11 +3976,12 @@
 
     // Detalle
     h += '<div class="exec-section-title">📋 Detalle de días de servicio</div>';
-    var rows = days.filter(function(x){ return x.isSvc || x.hol || x.n; });
+    var rows = days.filter(function(x){ return x.isSvc || x.hol || x.proj.length; });
     var DN = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
     h += '<table class="rtable"><tr><th class="hd" style="width:22%">FECHA</th><th class="hd" style="width:22%">SITUACIÓN</th><th class="hd" style="width:14%">RACKS</th><th class="hd">OBSERVACIÓN</th></tr>'
       + rows.map(function(x){
-          var obs = x.hol ? esc(x.hol) + (x.n ? ' — se registró trabajo en feriado' : ' — no se trabaja') : (x.st==="extra" ? 'Fuera del esquema L/Mi/V' : '');
+          var projTxt = x.proj.length ? 'Relevamiento por proyecto (sin horas del servicio): ' + x.proj.map(function(r){ return esc(r.control.nombreRack||"Rack") + (r.control.proyecto ? ' — ' + esc(r.control.proyecto) : ''); }).join(', ') : '';
+          var obs = (x.hol ? esc(x.hol) + ' — no se trabaja' : '') + (x.hol && projTxt ? '<br>' : '') + projTxt;
           return '<tr><td>'+DN[x.wd]+' '+pad2(x.d)+'/'+pad2(m)+'</td><td style="font-weight:700;color:'+COL[x.st][1]+';">'+LBL[x.st]+'</td><td style="text-align:center;">'+(x.n||"—")+'</td><td style="font-size:11.5px;">'+obs+'</td></tr>';
         }).join("") + '</table>';
     return h;
