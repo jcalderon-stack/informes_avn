@@ -3125,8 +3125,8 @@
           + '<div style="font-size:12px;margin-bottom:6px;">'+o.items.map(function(x){ return '✔ '+x; }).join(' &nbsp; ')+'</div>'
           + (o.obs ? '<div style="font-size:11.5px;color:#555;margin-bottom:6px;">'+esc(o.obs)+'</div>' : '')
           + '<div style="display:grid;grid-template-columns:repeat('+((o.antes?1:0)+o.despues.length)+',1fr);gap:6px;">'
-          + (o.antes ? '<div style="text-align:center;"><img src="'+o.antes+'" crossorigin="anonymous" style="width:100%;height:120px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#777;">ANTES</div></div>' : '')
-          + o.despues.map(function(u){ return '<div style="text-align:center;"><img src="'+u+'" crossorigin="anonymous" style="width:100%;height:120px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#1E8E5A;font-weight:700;">ASÍ QUEDÓ</div></div>'; }).join("")
+          + (o.antes ? '<div style="text-align:center;"><img src="'+o.antes+'" style="width:100%;height:120px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#777;">ANTES</div></div>' : '')
+          + o.despues.map(function(u){ return '<div style="text-align:center;"><img src="'+u+'" style="width:100%;height:120px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#1E8E5A;font-weight:700;">ASÍ QUEDÓ</div></div>'; }).join("")
           + '</div></div>';
       } else {
         rest.push(o);
@@ -3752,8 +3752,8 @@
         h += '<div style="border:1px solid #bbb;border-radius:6px;padding:8px;break-inside:avoid;">'
           + '<div style="font-weight:700;font-size:12.5px;margin-bottom:6px;">'+esc(e.rack)+(e.fecha?' <span style="font-weight:400;color:#777;">· '+esc(e.fecha)+'</span>':'')+'</div>'
           + '<div style="display:grid;grid-template-columns:'+(e.antes?'1fr 1fr':'1fr')+';gap:6px;">'
-          + (e.antes ? '<div style="text-align:center;"><img src="'+e.antes+'" crossorigin="anonymous" style="width:100%;height:130px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#777;margin-top:2px;">ANTES</div></div>' : '')
-          + '<div style="text-align:center;"><img src="'+e.despues+'" crossorigin="anonymous" style="width:100%;height:130px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#1E8E5A;font-weight:700;margin-top:2px;">DESPUÉS</div></div>'
+          + (e.antes ? '<div style="text-align:center;"><img src="'+e.antes+'" style="width:100%;height:130px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#777;margin-top:2px;">ANTES</div></div>' : '')
+          + '<div style="text-align:center;"><img src="'+e.despues+'" style="width:100%;height:130px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#1E8E5A;font-weight:700;margin-top:2px;">DESPUÉS</div></div>'
           + '</div></div>';
       });
       h += '</div>';
