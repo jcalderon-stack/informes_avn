@@ -3895,7 +3895,7 @@
       else { (byDate[f] = byDate[f] || []).push(r); }
     });
 
-    var days = [], prog = 0, feriadosEnProg = 0, trabajados = 0, faltantes = 0, pendientes = 0, enFeriado = [], extras = [];
+    var days = [], prog = 0, feriadosEnProg = 0, trabajados = 0, faltantes = 0, pendientes = 0, proyectoSvc = 0;
     for(var d=1; d<=daysInMonth; d++){
       var ds = y+"-"+pad2(m)+"-"+pad2(d);
       var wd = new Date(y, m-1, d).getDay();
@@ -3909,10 +3909,11 @@
       } else if(isSvc){
         prog++;
         if(n){ st = "trabajado"; trabajados++; }
+        else if((projByDate[ds]||[]).length){ st = "proyecto"; proyectoSvc++; }
         else if(ds < today){ st = "faltante"; faltantes++; }
         else { st = "pendiente"; pendientes++; }
       } else {
-        st = "libre";
+        st = (projByDate[ds]||[]).length ? "proyecto" : "libre";
       }
       days.push({ ds:ds, d:d, wd:wd, st:st, hol:hol, n:n, isSvc:isSvc, proj:(projByDate[ds]||[]) });
     }
@@ -3920,8 +3921,8 @@
     var meta = SERVICE_TARGET_DAYS;
     var alcanzable = prog;
     var pct = Math.round(Math.min(trabajados / meta, 1) * 100);
-    var COL = { trabajado:["#DDF3E7","#1E8E5A"], faltante:["#FBE0DE","#C6362E"], pendiente:["#FFF3D6","#B9790B"], feriado:["#E6E0F5","#6B4FB3"], extra:["#DCEBFA","#2B6CB0"], libre:["#fff","#999"] };
-    var LBL = { trabajado:"Trabajado", faltante:"Sin trabajo registrado", pendiente:"Pendiente", feriado:"Feriado", extra:"Trabajo fuera de L/Mi/V", libre:"" };
+    var COL = { trabajado:["#DDF3E7","#1E8E5A"], faltante:["#FBE0DE","#C6362E"], pendiente:["#FFF3D6","#B9790B"], feriado:["#E6E0F5","#6B4FB3"], proyecto:["#D9F2F2","#0E7C7C"], extra:["#DCEBFA","#2B6CB0"], libre:["#fff","#999"] };
+    var LBL = { trabajado:"Trabajado", faltante:"Sin trabajo registrado", pendiente:"Pendiente", feriado:"Feriado", proyecto:"Proyecto", extra:"Trabajo fuera de L/Mi/V", libre:"" };
 
     var h = '<div class="exec-stats-grid">'
       + statCardHtml(programados, "DÍAS L/Mi/V DEL MES")
@@ -3937,7 +3938,7 @@
     if(faltantes) txt += ' Hay <b>'+faltantes+'</b> día(s) de servicio ya vencidos sin relevamientos cargados.';
     if(pendientes) txt += ' Quedan <b>'+pendientes+'</b> día(s) de servicio pendientes.';
     var projTotal = 0; Object.keys(projByDate).forEach(function(k){ projTotal += projByDate[k].length; });
-    if(projTotal) txt += ' Además, <b>'+projTotal+'</b> relevamiento(s) se realizaron por proyecto, sin utilizar las horas del servicio, y no se computan en los días trabajados.';
+    if(projTotal) txt += ' Además, <b>'+projTotal+'</b> relevamiento(s) se realizaron por proyecto, sin utilizar las horas del servicio (etiqueta "Proyecto" en el calendario); no se computan como días trabajados del servicio' + (proyectoSvc ? ' ni como días sin trabajo registrado (<b>'+proyectoSvc+'</b> día(s) de servicio dedicados a proyectos).' : '.');
     h += mgmtIntro(txt);
 
     // Calendario
@@ -3958,21 +3959,24 @@
           : (c.st==="trabajado" ? '<div style="font-size:10px;">✔ '+c.n+' rack'+(c.n===1?'':'s')+'</div>'
           : (c.st==="faltante" ? '<div style="font-size:10px;">✘ sin datos</div>'
           : (c.st==="pendiente" ? '<div style="font-size:10px;">⏳ pendiente</div>'
-          : "")));
+          : (c.st==="proyecto" ? '<div style="font-size:10px;font-weight:700;">🧩 Proyecto</div>'
+          : ""))));
+        if(c.proj.length && c.st!=="proyecto") sub += '<div style="font-size:9.5px;color:#0E7C7C;font-weight:700;">🧩 Proyecto</div>';
         h += '<td style="background:'+col[0]+';border:1px solid #ccc;vertical-align:top;height:58px;padding:3px;text-align:center;"><div style="font-weight:700;color:'+col[1]+';">'+c.d+(c.isSvc && c.st!=="feriado"?' ●':'')+'</div>'+sub+'</td>';
       }
       h += '</tr>';
     }
     h += '</table>';
-    h += '<div style="font-size:11px;color:#666;margin:6px 0 4px;">● día de servicio (L/Mi/V) · <span style="color:#1E8E5A;">verde</span>: trabajado · <span style="color:#C6362E;">rojo</span>: sin trabajo registrado · <span style="color:#B9790B;">amarillo</span>: pendiente · <span style="color:#6B4FB3;">violeta</span>: feriado / no laborable · solo se computan relevamientos con horas del servicio</div>';
+    h += '<div style="font-size:11px;color:#666;margin:6px 0 4px;">● día de servicio (L/Mi/V) · <span style="color:#1E8E5A;">verde</span>: trabajado · <span style="color:#C6362E;">rojo</span>: sin trabajo registrado · <span style="color:#B9790B;">amarillo</span>: pendiente · <span style="color:#6B4FB3;">violeta</span>: feriado / no laborable · <span style="color:#0E7C7C;">turquesa</span>: Proyecto (no usa horas del servicio)</div>';
 
     // Gráfico
     var pie = {};
     if(trabajados) pie["Trabajados"] = trabajados;
     if(faltantes) pie["Sin trabajo registrado"] = faltantes;
     if(pendientes) pie["Pendientes"] = pendientes;
+    if(proyectoSvc) pie["Proyectos"] = proyectoSvc;
     if(feriadosEnProg) pie["Feriados"] = feriadosEnProg;
-    h += '<div class="exec-section-title">📊 Cumplimiento de los días de servicio</div>' + renderPieChart(pie, { "Trabajados":"#1E8E5A", "Sin trabajo registrado":"#C6362E", "Pendientes":"#B9790B", "Feriados":"#6B4FB3" }, "No hay días de servicio en este mes.");
+    h += '<div class="exec-section-title">📊 Cumplimiento de los días de servicio</div>' + renderPieChart(pie, { "Trabajados":"#1E8E5A", "Sin trabajo registrado":"#C6362E", "Pendientes":"#B9790B", "Proyectos":"#0E7C7C", "Feriados":"#6B4FB3" }, "No hay días de servicio en este mes.");
 
     // Detalle
     h += '<div class="exec-section-title">📋 Detalle de días de servicio</div>';
@@ -3980,7 +3984,7 @@
     var DN = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
     h += '<table class="rtable"><tr><th class="hd" style="width:22%">FECHA</th><th class="hd" style="width:22%">SITUACIÓN</th><th class="hd" style="width:14%">RACKS</th><th class="hd">OBSERVACIÓN</th></tr>'
       + rows.map(function(x){
-          var projTxt = x.proj.length ? 'Relevamiento por proyecto (sin horas del servicio): ' + x.proj.map(function(r){ return esc(r.control.nombreRack||"Rack") + (r.control.proyecto ? ' — ' + esc(r.control.proyecto) : ''); }).join(', ') : '';
+          var projTxt = x.proj.length ? '<b>Proyecto:</b> ' + x.proj.map(function(r){ return esc(r.control.nombreRack||"Rack") + ' — asociado a ' + esc(r.control.proyecto || "proyecto sin nombre"); }).join('; ') : '';
           var obs = (x.hol ? esc(x.hol) + ' — no se trabaja' : '') + (x.hol && projTxt ? '<br>' : '') + projTxt;
           return '<tr><td>'+DN[x.wd]+' '+pad2(x.d)+'/'+pad2(m)+'</td><td style="font-weight:700;color:'+COL[x.st][1]+';">'+LBL[x.st]+'</td><td style="text-align:center;">'+(x.n||"—")+'</td><td style="font-size:11.5px;">'+obs+'</td></tr>';
         }).join("") + '</table>';
