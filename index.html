@@ -3092,6 +3092,55 @@
   var execCurrentTo = "";
   var execCurrentReports = [];
 
+  // Mejoras realizadas por rack, con las fotos de cómo quedó (máx. 12 racks con foto).
+  function renderMejorasConFotos(reports){
+    var byRack = {};
+    reports.forEach(function(r){
+      var items = r.mejoras && r.mejoras.items;
+      var list = [];
+      if(items) Object.keys(items).forEach(function(k){
+        if(items[k] && items[k].checked){
+          var q = parseInt(items[k].cantidad,10);
+          list.push(esc(k) + ((!isNaN(q) && q>0 && MEJORAS_CANTIDAD_ITEMS.indexOf(k)!==-1) ? ' ('+q+')' : ''));
+        }
+      });
+      if(!list.length) return;
+      var n = r.control.nombreRack || "Rack sin nombre";
+      var o = byRack[n] = byRack[n] || { rack:n, items:[], antes:null, despues:[], obs:"" };
+      list.forEach(function(x){ if(o.items.indexOf(x) === -1) o.items.push(x); });
+      var ant = (r.fotosAntes||[]).filter(isRealPhoto), des = (r.fotosDespues||[]).filter(isRealPhoto);
+      if(!o.antes && ant.length) o.antes = ant[0];
+      des.forEach(function(u){ if(o.despues.length < 2 && o.despues.indexOf(u) === -1) o.despues.push(u); });
+      if(!o.obs && r.observaciones && r.observaciones.trim()) o.obs = r.observaciones.trim();
+    });
+    var racks = Object.keys(byRack).map(function(k){ return byRack[k]; });
+    if(!racks.length) return '<div class="exec-empty-note">No se registraron mejoras en este período.</div>';
+    racks.sort(function(a,b){ return (b.despues.length>0)-(a.despues.length>0) || b.items.length-a.items.length; });
+    var h = '', shown = 0, rest = [];
+    racks.forEach(function(o){
+      if(o.despues.length && shown < 12){
+        shown++;
+        h += '<div style="border:1px solid #bbb;border-radius:6px;padding:10px;margin-bottom:10px;break-inside:avoid;">'
+          + '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">⛓️ '+esc(o.rack)+'</div>'
+          + '<div style="font-size:12px;margin-bottom:6px;">'+o.items.map(function(x){ return '✔ '+x; }).join(' &nbsp; ')+'</div>'
+          + (o.obs ? '<div style="font-size:11.5px;color:#555;margin-bottom:6px;">'+esc(o.obs)+'</div>' : '')
+          + '<div style="display:grid;grid-template-columns:repeat('+((o.antes?1:0)+o.despues.length)+',1fr);gap:6px;">'
+          + (o.antes ? '<div style="text-align:center;"><img src="'+o.antes+'" crossorigin="anonymous" style="width:100%;height:120px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#777;">ANTES</div></div>' : '')
+          + o.despues.map(function(u){ return '<div style="text-align:center;"><img src="'+u+'" crossorigin="anonymous" style="width:100%;height:120px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#1E8E5A;font-weight:700;">ASÍ QUEDÓ</div></div>'; }).join("")
+          + '</div></div>';
+      } else {
+        rest.push(o);
+      }
+    });
+    if(rest.length){
+      h += '<div class="exec-section-title" style="font-size:13px;">Otras mejoras realizadas</div>';
+      rest.forEach(function(o){
+        h += '<div class="exec-list-item"><span class="exec-rack-tag">'+esc(o.rack)+'</span> — '+o.items.join(', ')+'</div>';
+      });
+    }
+    return h;
+  }
+
   function buildExecutiveBody(fromStr, toStr, reports, opts){
     opts = opts || {};
     execCurrentFrom = fromStr;
@@ -3134,22 +3183,26 @@
       ? ('el <b>'+esc(fmtDateLong(fromStr))+'</b>')
       : ('entre el <b>'+esc(fmtDateShort(fromStr))+'</b> y el <b>'+esc(fmtDateShort(toStr))+'</b>'));
 
+    var gest = computeGestion(reports);
+    var mejoradosN = gest.corregidos;
+    var totalMejorasN = gest.totalMejoras;
+
     html += '<div class="exec-intro">'
-      + 'Este informe técnico resume el relevamiento, las mejoras implementadas y las tareas correctivas ejecutadas '+periodoTexto+' '
-      + 'sobre la infraestructura de racks de comunicaciones del barrio, a cargo de PNC IT y Support QSS, bajo la supervisión de la Asociación Vecinal Nordelta (AVN). '
-      + 'Se relevaron <b>'+reports.length+'</b> '+(reports.length===1?"gabinete de telecomunicaciones":"gabinetes de telecomunicaciones")+', evaluando parámetros de acondicionamiento térmico, alimentación eléctrica, cableado estructurado y equipamiento de networking. '
-      + 'Se destacan las mejoras aplicadas sobre la infraestructura y las tareas correctivas resueltas durante el período, orientadas a sostener la disponibilidad y el buen funcionamiento del servicio. '
-      + 'A continuación se detallan los hallazgos técnicos, las mejoras realizadas y los puntos que requieren seguimiento.'
+      + 'Este informe presenta los resultados del servicio de mantenimiento de la infraestructura de racks de comunicaciones del barrio '+periodoTexto+', a cargo de PNC IT y Support QSS bajo la supervisión de la Asociación Vecinal Nordelta (AVN). '
+      + 'Se atendieron <b>'+reports.length+'</b> '+(reports.length===1?"gabinete de telecomunicaciones":"gabinetes de telecomunicaciones")+', con <b>'+totalMejorasN+'</b> mejoras y tareas ejecutadas en <b>'+mejoradosN+'</b> de ellos'
+      + (gest.culminados ? ', de los cuales <b>'+gest.culminados+'</b> quedaron culminados y en estado satisfactorio' : '')
+      + '. A continuación se muestra el estado de los racks, su distribución por tipo de red, las mejoras realizadas con evidencia fotográfica de cómo quedaron y el trabajo del equipo técnico.'
     + '</div>';
 
     html += '<div class="exec-stats-grid">'
       + '<div class="exec-stat-card"><div class="exec-stat-num">'+reports.length+'</div><div class="exec-stat-label">RACKS REVISADOS</div></div>'
       + '<div class="exec-stat-card"><div class="exec-stat-num" style="color:var(--ok);">'+sinNovedad+'</div><div class="exec-stat-label">SIN NOVEDAD</div></div>'
-      + '<div class="exec-stat-card"><div class="exec-stat-num" style="color:var(--warn);">'+conObservaciones+'</div><div class="exec-stat-label">CON OBSERVACIONES</div></div>'
+      + '<div class="exec-stat-card"><div class="exec-stat-num" style="color:var(--accent);">'+totalMejorasN+'</div><div class="exec-stat-label">MEJORAS Y TAREAS REALIZADAS</div></div>'
       + '<div class="exec-stat-card"><div class="exec-stat-num">'+totalFotos+'</div><div class="exec-stat-label">FOTOS REGISTRADAS</div></div>'
     + '</div>';
 
-    html += '<div class="exec-section-title">📊 Resumen general del estado revisado</div>';
+    html += '<div class="exec-section-title">📊 Resumen del estado de los racks</div>';
+    html += renderPieChart(rackStatusCounts, { BIEN:"#1E8E5A", REGULAR:"#B9790B", MAL:"#C6362E" }, "Sin datos de estado.");
     if(totalItems > 0){
       ["BIEN", "REGULAR", "MAL"].forEach(function(k){
         var pct = Math.round((counts[k] / totalItems) * 100);
@@ -3159,26 +3212,7 @@
           + '<span class="exec-bar-value">'+pct+'%</span>'
         + '</div>';
       });
-    } else {
-      html += '<div class="exec-empty-note">No hay puntos de revisión cargados todavía.</div>';
     }
-
-    html += '<div class="exec-section-title">⛓️ Cantidad de racks por estado general</div>';
-    html += '<div class="exec-bar-row">'
-      + '<span class="exec-bar-label">'+ESTADO_PLAIN.BIEN+'</span>'
-      + '<div class="exec-bar-track"><div class="exec-bar-fill BIEN" style="width:'+Math.round((rackStatusCounts.BIEN / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
-      + '<span class="exec-bar-value">'+rackStatusCounts.BIEN+'</span>'
-    + '</div>'
-    + '<div class="exec-bar-row">'
-      + '<span class="exec-bar-label">'+ESTADO_PLAIN.REGULAR+'</span>'
-      + '<div class="exec-bar-track"><div class="exec-bar-fill REGULAR" style="width:'+Math.round((rackStatusCounts.REGULAR / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
-      + '<span class="exec-bar-value">'+rackStatusCounts.REGULAR+'</span>'
-    + '</div>'
-    + '<div class="exec-bar-row">'
-      + '<span class="exec-bar-label">'+ESTADO_PLAIN.MAL+'</span>'
-      + '<div class="exec-bar-track"><div class="exec-bar-fill MAL" style="width:'+Math.round((rackStatusCounts.MAL / Math.max(reports.length,1)) * 100)+'%;"></div></div>'
-      + '<span class="exec-bar-value">'+rackStatusCounts.MAL+'</span>'
-    + '</div>';
 
     html += '<div class="exec-section-title">⛓️ Racks por tipo de red</div>';
     html += '<div class="exec-dual-chart">'
@@ -3195,68 +3229,14 @@
       var repeatedText = repeatedRacks.map(function(rr){
         return '<b>'+esc(rr.rack)+'</b> ('+rr.count+' visitas)';
       }).join(", ");
-      html += '<div class="exec-highlight">🔁 <b>Seguimiento activo detectado:</b> ' + repeatedText
+      html += '<div class="exec-highlight">🔁 <b>Seguimiento activo:</b> ' + repeatedText
         + (repeatedRacks.length === 1 ? ' fue revisado' : ' fueron revisados') + ' más de una vez durante el período, '
         + 'lo que refleja un proceso de mejora continua y control de las tareas realizadas.</div>';
     }
-    if(mejoras.length){
-      mejoras.forEach(function(m){
-        html += '<div class="exec-list-item"><span class="exec-rack-tag">'+esc(m.rack)+'</span> — '+esc(m.text)+'</div>';
-      });
-    } else {
-      html += '<div class="exec-empty-note">No se registraron observaciones adicionales sobre tareas realizadas.</div>';
-    }
-
-    html += '<div class="exec-section-title">🧰 Informe de Materiales Necesarios</div>';
-    html += renderMaterialesTable(collectMaterialesNecesarios(reports));
-
-    html += '<div class="exec-section-title">⚠️ Puntos que requieren seguimiento</div>';
-    if(inconvenientes.length){
-      html += renderPieChart(inconvenientesPorArea);
-    } else {
-      html += '<div class="exec-empty-note">No se encontraron inconvenientes en los racks revisados durante el período. 🎉</div>';
-    }
-    html += '<div class="exec-intro">'
-      + 'El seguimiento de estos puntos se realiza mediante inspecciones periódicas programadas por el equipo técnico de PNC IT y Support QSS. '
-      + 'Cada observación queda documentada y priorizada según su criticidad, y se resuelve en la siguiente visita programada o de forma correctiva '
-      + 'inmediata cuando la situación lo requiere. Los avances sobre estos puntos se reflejan en los próximos informes de mantenimiento.'
-    + '</div>';
+    html += renderMejorasConFotos(reports);
 
     html += '<div class="exec-section-title">🔧 Racks revisados por técnico</div>';
     html += renderPieChart(racksByTecnico);
-
-    html += '<div class="exec-section-title">🔒 Racks con cerraduras dañadas</div>';
-    html += renderRackEstadoTable(collectDamagedLocks(reports), "No se detectaron cerraduras dañadas en este período. 🎉");
-
-    html += '<div class="exec-section-title">🌡️ Racks con sensores térmicos</div>';
-    html += renderRackEstadoTable(collectRacksWithThermalSensor(reports), "No se registraron racks con regulador de temperatura en este período.");
-
-    html += '<div class="exec-section-title">🗂️ Racks con patchera y organizador de cable</div>';
-    html += renderPatcheraTable(collectRacksWithPatcheraOrganizador(reports), "No se registró colocación de patchera ni organizador en este período.");
-
-    html += '<div class="exec-section-title">🚨 Informe de incidencias críticas</div>';
-    html += renderIncidenciasTable(collectCriticalIncidents(reports), "No se registraron incidencias críticas en este período. 🎉");
-
-    html += '<div class="exec-section-title">🎨 Informe de gabinetes / pintura / anclaje</div>';
-    html += renderGabineteTable(collectGabinetePinturaAnclaje(reports), "No hay datos cargados de gabinetes, pintura o anclaje en este período.");
-
-    html += '<div class="exec-section-title">🔩 Informe de bisagras</div>';
-    html += renderRackEstadoTable(collectItemStatusByRack(reports, "interior", "Bisagras"), "No hay datos cargados de bisagras en este período.");
-
-    html += '<div class="exec-section-title">🌬️ Informe de burletes</div>';
-    html += renderRackEstadoTable(collectItemStatusByRack(reports, "termico", "Burletes"), "No hay datos cargados de burletes en este período.");
-
-    html += '<div class="exec-section-title">📋 Detalle por rack</div>';
-    html += '<table class="rtable">'
-      + '<tr><th class="hd">RACK</th><th class="hd">UBICACIÓN</th><th class="hd">TÉCNICO</th><th class="hd">ESTADO</th></tr>';
-    reports.forEach(function(r){
-      var st = rackOverallStatus(r);
-      html += '<tr><td>'+esc(r.control.nombreRack || "—")+'</td>'
-        + '<td>'+esc(r.control.ubicacion || "—")+'</td>'
-        + '<td>'+esc((r.responsable && r.responsable.nombre) || "—")+'</td>'
-        + '<td class="estado-cell '+st+'">'+ESTADO_PLAIN[st]+'</td></tr>';
-    });
-    html += '</table>';
 
     html += '<div class="exec-footer">'
       + 'Informe generado automáticamente por la app de Relevamiento de Racks · https://anv.supportqss.com/ '
