@@ -3335,8 +3335,32 @@
     { key:"materiales",  icon:"🧰", title:"Informe de Materiales Necesarios", mode:"materiales" },
     { key:"importados",  icon:"📥", title:"Relevamiento IMPORTADOS", mode:"imported" },
     { key:"inventario",  icon:"📦", title:"Reporte de Inventario — Materiales Gastados", mode:"inventario", adminOnly:true },
-    { key:"gestion",     icon:"🏆", title:"Resultados de la Gestión", mode:"gestion" }
+    { key:"gestion",     icon:"🏆", title:"Resultados de la Gestión", mode:"gestion" },
+    { key:"calendario",  icon:"📅", title:"Calendario de Servicio y Días Trabajados", mode:"calendario" }
   ];
+
+  // Feriados nacionales y días no laborables (con fines turísticos) de Argentina.
+  // Fuentes: argentina.gob.ar / decretos oficiales. Revisar y completar cada año.
+  var FERIADOS_AR = {
+    "2025-01-01":"Año Nuevo", "2025-03-03":"Carnaval", "2025-03-04":"Carnaval", "2025-03-24":"Día de la Memoria",
+    "2025-04-02":"Día del Veterano de Malvinas", "2025-04-17":"Jueves Santo (no laborable)", "2025-04-18":"Viernes Santo",
+    "2025-05-01":"Día del Trabajo", "2025-05-02":"Día no laborable turístico", "2025-05-25":"Revolución de Mayo",
+    "2025-06-16":"Paso a la Inmortalidad de Güemes", "2025-06-20":"Día de la Bandera (Belgrano)", "2025-07-09":"Día de la Independencia",
+    "2025-08-15":"Día no laborable turístico", "2025-08-17":"Paso a la Inmortalidad de San Martín", "2025-10-10":"Día de la Diversidad Cultural (trasladado)",
+    "2025-11-21":"Día no laborable turístico", "2025-11-24":"Día de la Soberanía Nacional (trasladado)", "2025-12-08":"Inmaculada Concepción", "2025-12-25":"Navidad",
+    "2026-01-01":"Año Nuevo", "2026-02-16":"Carnaval", "2026-02-17":"Carnaval", "2026-03-23":"Día no laborable turístico", "2026-03-24":"Día de la Memoria",
+    "2026-04-02":"Día del Veterano de Malvinas / Jueves Santo", "2026-04-03":"Viernes Santo", "2026-05-01":"Día del Trabajo", "2026-05-25":"Revolución de Mayo",
+    "2026-06-15":"Paso a la Inmortalidad de Güemes (trasladado)", "2026-06-20":"Día de la Bandera (Belgrano)", "2026-07-09":"Día de la Independencia",
+    "2026-07-10":"Día no laborable turístico", "2026-08-17":"Paso a la Inmortalidad de San Martín", "2026-10-12":"Día de la Diversidad Cultural",
+    "2026-11-23":"Día de la Soberanía Nacional (trasladado)", "2026-12-07":"Día no laborable turístico", "2026-12-08":"Inmaculada Concepción", "2026-12-25":"Navidad",
+    "2027-01-01":"Año Nuevo", "2027-02-08":"Carnaval", "2027-02-09":"Carnaval", "2027-03-24":"Día de la Memoria", "2027-03-26":"Viernes Santo",
+    "2027-04-02":"Día del Veterano de Malvinas", "2027-05-25":"Revolución de Mayo", "2027-06-21":"Paso a la Inmortalidad de Güemes (trasladado)",
+    "2027-07-09":"Día de la Independencia", "2027-08-16":"Paso a la Inmortalidad de San Martín (trasladado)", "2027-10-11":"Día de la Diversidad Cultural (trasladado)",
+    "2027-12-08":"Inmaculada Concepción"
+  };
+  var SERVICE_WEEKDAYS = [1, 3, 5]; // lunes, miércoles, viernes
+  var SERVICE_TARGET_DAYS = 12;
+  var MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   var MAIL_TO = "dberrueta@pncit.com.ar";
   var MAIL_TO_NAME = "Daniela Berrueta";
   var MAIL_CC = "jcaldeon@supportqss.com";
@@ -3435,6 +3459,10 @@
     }
     if(cfg.mode === "imported"){
       renderImportadosFullReport();
+      return;
+    }
+    if(cfg.mode === "calendario"){
+      renderCalendarioSetup();
       return;
     }
     if(cfg.mode === "inventario" || cfg.mode === "gestion"){
@@ -3781,6 +3809,129 @@
     }).finally(function(){ btn.disabled = false; btn.textContent = orig; });
   }
 
+  function pad2(n){ return (n<10?"0":"")+n; }
+  function localTodayStr(){ var d=new Date(); return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+
+  function renderCalendarioSetup(){
+    var cfg = comparativeReportByKey("calendario");
+    var el = $("#view-comparativos-scroll");
+    var t = localTodayStr().slice(0,7);
+    el.innerHTML = '<div style="max-width:820px;width:100%;margin:0 auto;padding:22px 16px 60px;">'
+      + '<div class="exec-setup-box"><h1>'+cfg.icon+' '+esc(cfg.title)+'</h1>'
+      + '<div class="sub">El servicio se realiza lunes, miércoles y viernes (meta: '+SERVICE_TARGET_DAYS+' días al mes). Los feriados no se trabaja. Elegí el mes a analizar.</div>'
+      + '<div class="field" style="max-width:260px;margin:12px auto;"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Mes</label><input type="month" id="cal-month" value="'+t+'"></div>'
+      + '<div style="display:flex;gap:8px;justify-content:center;"><button class="btn btn-outline btn-sm" id="cal-cancel">Volver</button><button class="btn btn-accent" id="cal-go">Generar análisis</button></div>'
+      + '</div></div>';
+    $("#cal-cancel").onclick = renderComparativosMenu;
+    $("#cal-go").onclick = function(){
+      var v = $("#cal-month").value;
+      if(!v){ toast("Elegí un mes"); return; }
+      var y = parseInt(v.slice(0,4),10), m = parseInt(v.slice(5,7),10);
+      var last = new Date(y, m, 0).getDate();
+      var from = v+"-01", to = v+"-"+pad2(last);
+      renderComparativoReport("calendario", from, to, reportsInRange(from, to));
+    };
+  }
+
+  function buildCalendarioBody(fromStr, reports){
+    var y = parseInt(fromStr.slice(0,4),10), m = parseInt(fromStr.slice(5,7),10);
+    var daysInMonth = new Date(y, m, 0).getDate();
+    var today = localTodayStr();
+    var byDate = {};
+    reports.forEach(function(r){ var f = r.control && r.control.fecha; if(f){ (byDate[f] = byDate[f] || []).push(r); } });
+
+    var days = [], prog = 0, feriadosEnProg = 0, trabajados = 0, faltantes = 0, pendientes = 0, enFeriado = [], extras = [];
+    for(var d=1; d<=daysInMonth; d++){
+      var ds = y+"-"+pad2(m)+"-"+pad2(d);
+      var wd = new Date(y, m-1, d).getDay();
+      var isSvc = SERVICE_WEEKDAYS.indexOf(wd) !== -1;
+      var hol = FERIADOS_AR[ds] || null;
+      var n = (byDate[ds] || []).length;
+      var st;
+      if(hol){
+        st = "feriado";
+        if(isSvc) feriadosEnProg++;
+        if(n) enFeriado.push(ds);
+      } else if(isSvc){
+        prog++;
+        if(n){ st = "trabajado"; trabajados++; }
+        else if(ds < today){ st = "faltante"; faltantes++; }
+        else { st = "pendiente"; pendientes++; }
+      } else {
+        if(n){ st = "extra"; extras.push(ds); } else st = "libre";
+      }
+      days.push({ ds:ds, d:d, wd:wd, st:st, hol:hol, n:n, isSvc:isSvc });
+    }
+    var programados = prog + feriadosEnProg; // lunes/miércoles/viernes del mes
+    var meta = SERVICE_TARGET_DAYS;
+    var alcanzable = prog;
+    var pct = Math.round(Math.min(trabajados / meta, 1) * 100);
+    var COL = { trabajado:["#DDF3E7","#1E8E5A"], faltante:["#FBE0DE","#C6362E"], pendiente:["#FFF3D6","#B9790B"], feriado:["#E6E0F5","#6B4FB3"], extra:["#DCEBFA","#2B6CB0"], libre:["#fff","#999"] };
+    var LBL = { trabajado:"Trabajado", faltante:"Sin trabajo registrado", pendiente:"Pendiente", feriado:"Feriado", extra:"Trabajo fuera de L/Mi/V", libre:"" };
+
+    var h = '<div class="exec-stats-grid">'
+      + statCardHtml(programados, "DÍAS L/Mi/V DEL MES")
+      + statCardHtml(feriadosEnProg, "FERIADOS EN DÍA DE SERVICIO", "#6B4FB3")
+      + statCardHtml(trabajados + " / " + meta, "DÍAS TRABAJADOS vs META", "#1E8E5A")
+      + statCardHtml(faltantes, "DÍAS SIN TRABAJO REGISTRADO", faltantes ? "#C6362E" : "#1E8E5A")
+    + '</div>';
+
+    var txt = 'En <b>'+MESES_ES[m-1]+' '+y+'</b> hay <b>'+programados+'</b> días de servicio (lunes, miércoles y viernes)'
+      + (feriadosEnProg ? ', de los cuales <b>'+feriadosEnProg+'</b> son feriado y no se trabaja, quedando <b>'+prog+'</b> días hábiles de servicio' : '')
+      + '. Se trabajaron <b>'+trabajados+'</b> de los <b>'+meta+'</b> días esperados por mes (<b>'+pct+'%</b>).';
+    if(alcanzable < meta) txt += ' Por los feriados, este mes solo hay <b>'+alcanzable+'</b> días hábiles posibles, por lo que la meta de '+meta+' no es alcanzable.';
+    if(faltantes) txt += ' Hay <b>'+faltantes+'</b> día(s) de servicio ya vencidos sin relevamientos cargados.';
+    if(pendientes) txt += ' Quedan <b>'+pendientes+'</b> día(s) de servicio pendientes.';
+    if(enFeriado.length) txt += ' Se registró trabajo en <b>'+enFeriado.length+'</b> feriado(s).';
+    if(extras.length) txt += ' Además se trabajó en <b>'+extras.length+'</b> día(s) fuera del esquema L/Mi/V.';
+    h += mgmtIntro(txt);
+
+    // Calendario
+    h += '<div class="exec-section-title">📅 Calendario de '+MESES_ES[m-1]+' '+y+'</div>';
+    h += '<table class="rtable" style="table-layout:fixed;"><tr>' + ["LUN","MAR","MIÉ","JUE","VIE","SÁB","DOM"].map(function(x){ return '<th class="hd" style="text-align:center;">'+x+'</th>'; }).join("") + '</tr>';
+    var firstWd = (new Date(y, m-1, 1).getDay() + 6) % 7; // lunes=0
+    var cells = [], i;
+    for(i=0;i<firstWd;i++) cells.push(null);
+    days.forEach(function(x){ cells.push(x); });
+    while(cells.length % 7) cells.push(null);
+    for(i=0;i<cells.length;i+=7){
+      h += '<tr>';
+      for(var j=0;j<7;j++){
+        var c = cells[i+j];
+        if(!c){ h += '<td style="background:#f5f5f5;"></td>'; continue; }
+        var col = COL[c.st];
+        var sub = c.st==="feriado" ? '<div style="font-size:9px;line-height:1.15;">'+esc(c.hol)+(c.n?' ⚠ trabajado':'')+'</div>'
+          : (c.st==="trabajado" ? '<div style="font-size:10px;">✔ '+c.n+' rack'+(c.n===1?'':'s')+'</div>'
+          : (c.st==="faltante" ? '<div style="font-size:10px;">✘ sin datos</div>'
+          : (c.st==="pendiente" ? '<div style="font-size:10px;">⏳ pendiente</div>'
+          : (c.st==="extra" ? '<div style="font-size:10px;">'+c.n+' rack'+(c.n===1?'':'s')+' (extra)</div>' : ''))));
+        h += '<td style="background:'+col[0]+';border:1px solid #ccc;vertical-align:top;height:58px;padding:3px;text-align:center;"><div style="font-weight:700;color:'+col[1]+';">'+c.d+(c.isSvc && c.st!=="feriado"?' ●':'')+'</div>'+sub+'</td>';
+      }
+      h += '</tr>';
+    }
+    h += '</table>';
+    h += '<div style="font-size:11px;color:#666;margin:6px 0 4px;">● día de servicio (L/Mi/V) · <span style="color:#1E8E5A;">verde</span>: trabajado · <span style="color:#C6362E;">rojo</span>: sin trabajo registrado · <span style="color:#B9790B;">amarillo</span>: pendiente · <span style="color:#6B4FB3;">violeta</span>: feriado / no laborable · <span style="color:#2B6CB0;">azul</span>: trabajo fuera de L/Mi/V</div>';
+
+    // Gráfico
+    var pie = {};
+    if(trabajados) pie["Trabajados"] = trabajados;
+    if(faltantes) pie["Sin trabajo registrado"] = faltantes;
+    if(pendientes) pie["Pendientes"] = pendientes;
+    if(feriadosEnProg) pie["Feriados"] = feriadosEnProg;
+    h += '<div class="exec-section-title">📊 Cumplimiento de los días de servicio</div>' + renderPieChart(pie, { "Trabajados":"#1E8E5A", "Sin trabajo registrado":"#C6362E", "Pendientes":"#B9790B", "Feriados":"#6B4FB3" }, "No hay días de servicio en este mes.");
+
+    // Detalle
+    h += '<div class="exec-section-title">📋 Detalle de días de servicio</div>';
+    var rows = days.filter(function(x){ return x.isSvc || x.hol || x.n; });
+    var DN = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+    h += '<table class="rtable"><tr><th class="hd" style="width:22%">FECHA</th><th class="hd" style="width:22%">SITUACIÓN</th><th class="hd" style="width:14%">RACKS</th><th class="hd">OBSERVACIÓN</th></tr>'
+      + rows.map(function(x){
+          var obs = x.hol ? esc(x.hol) + (x.n ? ' — se registró trabajo en feriado' : ' — no se trabaja') : (x.st==="extra" ? 'Fuera del esquema L/Mi/V' : '');
+          return '<tr><td>'+DN[x.wd]+' '+pad2(x.d)+'/'+pad2(m)+'</td><td style="font-weight:700;color:'+COL[x.st][1]+';">'+LBL[x.st]+'</td><td style="text-align:center;">'+(x.n||"—")+'</td><td style="font-size:11.5px;">'+obs+'</td></tr>';
+        }).join("") + '</table>';
+    return h;
+  }
+
   function statCardHtml(num, label, color){
     return '<div class="exec-stat-card"><div class="exec-stat-num"'+(color?' style="color:'+color+';"':'')+'>'+num+'</div><div class="exec-stat-label">'+esc(label)+'</div></div>';
   }
@@ -3941,6 +4092,8 @@
       html += '<div class="exec-section-title">📈 Detalle de estado — Burletes</div>' + renderStatusBarChart(statusCountsFromRows(rowsBu));
       html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderRackEstadoTable(rowsBu, "No hay datos cargados de burletes en este período.");
 
+    } else if(key === "calendario"){
+      html += buildCalendarioBody(compCurrentFrom, reports);
     } else if(key === "inventario"){
       html += buildInventarioBody(reports);
     } else if(key === "gestion"){
@@ -3981,7 +4134,9 @@
       + '<img src="'+LOGO_PNCIT+'" alt="PNC IT">'
     + '</div>';
     var periodLabel;
-    if(fromStr && toStr){
+    if(key === "calendario"){
+      periodLabel = MESES_ES[parseInt(fromStr.slice(5,7),10)-1] + " " + fromStr.slice(0,4);
+    } else if(fromStr && toStr){
       periodLabel = fmtDateRangeLong(fromStr, toStr);
     } else if(key === "materiales"){
       periodLabel = "Histórico — todos los relevamientos cargados";
