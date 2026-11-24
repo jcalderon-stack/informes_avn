@@ -3353,8 +3353,13 @@
     { key:"bisagras",    icon:"🔩", title:"Informe de Bisagras", mode:"latest" },
     { key:"burletes",    icon:"🌬️", title:"Informe de Burletes", mode:"latest" },
     { key:"materiales",  icon:"🧰", title:"Informe de Materiales Necesarios", mode:"materiales" },
-    { key:"importados",  icon:"📥", title:"Relevamiento IMPORTADOS", mode:"imported" }
+    { key:"importados",  icon:"📥", title:"Relevamiento IMPORTADOS", mode:"imported" },
+    { key:"inventario",  icon:"📦", title:"Reporte de Inventario — Materiales Gastados", mode:"inventario", adminOnly:true },
+    { key:"gestion",     icon:"🏆", title:"Resultados de la Gestión", mode:"gestion" }
   ];
+  var MAIL_TO = "dberrueta@pncit.com.ar";
+  var MAIL_TO_NAME = "Daniela Berrueta";
+  var MAIL_CC = "jcaldeon@supportqss.com";
 
   // Para los informes de "estado actual": si un mismo rack tiene varios
   // relevamientos, nos quedamos con el más nuevo (reportsCache ya viene
@@ -3405,9 +3410,10 @@
     var el = $("#view-comparativos-scroll");
     var html = '<div style="max-width:820px;width:100%;margin:0 auto;padding:22px 16px 60px;">';
     html += '<div class="home-head"><h1>Informes Comparativos</h1></div>';
-    html += '<div class="modal-sub" style="margin-bottom:18px;">Elegí un informe específico. La mayoría se genera al instante con el estado más reciente de cada rack; "Incidencias Críticas" y "Materiales Necesarios" te dejan elegir el período.</div>';
+    html += '<div class="modal-sub" style="margin-bottom:18px;">Elegí un informe específico. La mayoría se genera al instante con el estado más reciente de cada rack; "Incidencias Críticas", "Materiales Necesarios", "Inventario" y "Resultados de la Gestión" te dejan elegir el período.</div>';
     html += '<div class="comp-menu-grid">';
     COMPARATIVE_REPORTS.forEach(function(r){
+      if(r.adminOnly && authRole !== "admin") return;
       html += '<button type="button" class="comp-menu-card" data-key="'+r.key+'">'
         + '<span class="comp-menu-icon">'+r.icon+'</span>'
         + '<span class="comp-menu-title">'+esc(r.title)+'</span>'
@@ -3449,6 +3455,10 @@
     }
     if(cfg.mode === "imported"){
       renderImportadosFullReport();
+      return;
+    }
+    if(cfg.mode === "inventario" || cfg.mode === "gestion"){
+      renderPeriodoSetup(key);
       return;
     }
 
@@ -3614,6 +3624,183 @@
     };
   }
 
+  // Setup de período para Inventario semanal y Resultados de gestión.
+  function renderPeriodoSetup(key){
+    var cfg = comparativeReportByKey(key);
+    var el = $("#view-comparativos-scroll");
+    var toD = new Date(); var fromD = new Date(); fromD.setDate(toD.getDate() - 6);
+    var toStr0 = toD.toISOString().slice(0,10), fromStr0 = fromD.toISOString().slice(0,10);
+    var isInv = key === "inventario";
+    var html = '<div style="max-width:820px;width:100%;margin:0 auto;padding:22px 16px 60px;">';
+    html += '<div class="exec-setup-box"><h1>'+cfg.icon+' '+esc(cfg.title)+'</h1>'
+      + '<div class="sub">'+(isInv ? 'Por defecto: la última semana. Podés ajustar el período.' : 'Elegí el período, o generalo con todo el histórico.')+'</div>'
+      + '<div class="field-row">'
+        + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Desde</label><input type="date" id="per-from" value="'+fromStr0+'"></div>'
+        + '<div class="field"><label style="font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Hasta</label><input type="date" id="per-to" value="'+toStr0+'"></div>'
+      + '</div><div class="exec-count-hint" id="per-hint"></div>'
+      + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'
+        + '<button class="btn btn-outline btn-sm" id="per-cancel">Volver</button>'
+        + (isInv ? '' : '<button class="btn btn-outline" id="per-hist">📚 Histórico completo</button>')
+        + '<button class="btn btn-accent" id="per-go">Generar informe</button>'
+      + '</div></div></div>';
+    el.innerHTML = html;
+    function hint(){
+      var f=$("#per-from").value, t=$("#per-to").value;
+      if(!f||!t){ $("#per-hint").textContent=""; return; }
+      if(f>t){ $("#per-hint").textContent="La fecha 'Desde' no puede ser posterior a 'Hasta'."; return; }
+      var n=reportsInRange(f,t).length;
+      $("#per-hint").textContent=n+(n===1?" relevamiento cargado en ese período.":" relevamientos cargados en ese período.");
+    }
+    hint();
+    $("#per-from").addEventListener("input",hint); $("#per-to").addEventListener("input",hint);
+    $("#per-cancel").onclick = renderComparativosMenu;
+    var hb = $("#per-hist");
+    if(hb) hb.onclick = function(){
+      if(!reportsCache.length){ toast("Todavía no hay relevamientos cargados"); return; }
+      renderComparativoReport(key, null, null, reportsCache);
+    };
+    $("#per-go").onclick = function(){
+      var f=$("#per-from").value, t=$("#per-to").value;
+      if(!f||!t){ toast("Elegí las dos fechas del período"); return; }
+      if(f>t){ toast("La fecha 'Desde' no puede ser posterior a 'Hasta'"); return; }
+      var rs=reportsInRange(f,t);
+      if(!rs.length){ toast("No hay relevamientos cargados en ese período"); return; }
+      renderComparativoReport(key, f, t, rs);
+    };
+  }
+
+  function countMejorasChecked(r){
+    var items = r.mejoras && r.mejoras.items; var n = 0;
+    if(items) Object.keys(items).forEach(function(k){ if(items[k] && items[k].checked) n++; });
+    return n;
+  }
+
+  function isRealPhoto(u){ return typeof u === "string" && (/^data:image/.test(u) || /^https?:/.test(u)); }
+
+  // Resultados de la gestión: racks atendidos, corregidos y culminados.
+  function computeGestion(reports){
+    var byRack = {};
+    reports.forEach(function(r){
+      var name = r.control.nombreRack || "Rack sin nombre";
+      (byRack[name] = byRack[name] || []).push(r);
+    });
+    var names = Object.keys(byRack);
+    var corregidos = 0, culminados = 0, totalMejoras = 0, reincidentes = 0;
+    var rows = names.map(function(n){
+      var list = byRack[n].slice().sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+      var latest = list[0];
+      var mej = 0; list.forEach(function(x){ mej += countMejorasChecked(x); });
+      var fotosD = 0; list.forEach(function(x){ fotosD += (x.fotosDespues||[]).filter(isRealPhoto).length; });
+      var corregido = mej > 0;
+      var estado = rackOverallStatus(latest);
+      var culminado = corregido && estado === "BIEN";
+      if(corregido) corregidos++;
+      if(culminado) culminados++;
+      if(list.length >= 2) reincidentes++;
+      totalMejoras += mej;
+      return { rack:n, visitas:list.length, mejoras:mej, estado:estado, corregido:corregido, culminado:culminado, barrio:(latest.control.barrio||""), fotosD:fotosD };
+    });
+    // Mejor evidencia: racks con fotos "después", priorizando más mejoras y más fotos
+    var evid = [];
+    reports.forEach(function(r){
+      var d = (r.fotosDespues||[]).filter(isRealPhoto);
+      if(!d.length) return;
+      var a = (r.fotosAntes||[]).filter(isRealPhoto);
+      evid.push({ rack:r.control.nombreRack||"Rack sin nombre", fecha:r.control.fecha||"", antes:a[0]||null, despues:d[0], score:countMejorasChecked(r)*3 + Math.min(d.length,3) + (a.length?2:0) });
+    });
+    evid.sort(function(x,y){ return y.score - x.score; });
+    var seen = {}, top = [];
+    evid.forEach(function(e){ if(!seen[e.rack] && top.length < 6){ seen[e.rack]=1; top.push(e); } });
+    return { rows:rows, atendidos:names.length, visitas:reports.length, corregidos:corregidos, culminados:culminados, totalMejoras:totalMejoras, reincidentes:reincidentes, evidencia:top };
+  }
+
+  function buildGestionBody(reports){
+    var g = computeGestion(reports);
+    var pend = g.atendidos - g.culminados;
+    var h = '<div class="exec-stats-grid">'
+      + statCardHtml(g.atendidos, "RACKS ATENDIDOS")
+      + statCardHtml(g.corregidos, "RACKS CORREGIDOS", "var(--accent)")
+      + statCardHtml(g.culminados, "RACKS CULMINADOS", "#1E8E5A")
+      + statCardHtml(g.totalMejoras, "MEJORAS / TAREAS EJECUTADAS")
+    + '</div>';
+    h += mgmtIntro('Durante el período se atendieron <b>'+g.atendidos+'</b> racks mediante <b>'+g.visitas+'</b> relevamientos técnicos. En <b>'+g.corregidos+'</b> de ellos se ejecutaron tareas correctivas o de mejora (<b>'+g.totalMejoras+'</b> intervenciones en total) y <b>'+g.culminados+'</b> quedaron culminados, es decir, corregidos y con estado final satisfactorio. '
+      + (pend > 0 ? 'Los <b>'+pend+'</b> restantes continúan en seguimiento para completar su normalización.' : 'Todos los racks atendidos quedaron en estado satisfactorio.')
+      + (g.reincidentes ? ' Se realizaron re-inspecciones en <b>'+g.reincidentes+'</b> racks para verificar la evolución de las mejoras.' : ''));
+    var pieData = { "Culminados":g.culminados, "Corregidos en seguimiento":Math.max(g.corregidos-g.culminados,0), "Atendidos sin corrección":Math.max(g.atendidos-g.corregidos,0) };
+    h += '<div class="exec-section-title">📊 Avance de la gestión</div>' + renderPieChart(pieData, { "Culminados":"#1E8E5A", "Corregidos en seguimiento":"#B9790B", "Atendidos sin corrección":"#6B7280" });
+    h += '<div class="exec-section-title">📈 Racks atendidos por estado final</div>' + renderStatusBarChart(statusCountsFromRows(g.rows.map(function(x){ return {estado:x.estado}; })));
+    h += '<div class="exec-section-title">📸 Evidencia fotográfica — cómo están quedando los racks</div>';
+    if(!g.evidencia.length){
+      h += '<div class="exec-empty-note">No hay fotos de evidencia cargadas en este período.</div>';
+    } else {
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+      g.evidencia.forEach(function(e){
+        h += '<div style="border:1px solid #bbb;border-radius:6px;padding:8px;break-inside:avoid;">'
+          + '<div style="font-weight:700;font-size:12.5px;margin-bottom:6px;">'+esc(e.rack)+(e.fecha?' <span style="font-weight:400;color:#777;">· '+esc(e.fecha)+'</span>':'')+'</div>'
+          + '<div style="display:grid;grid-template-columns:'+(e.antes?'1fr 1fr':'1fr')+';gap:6px;">'
+          + (e.antes ? '<div style="text-align:center;"><img src="'+e.antes+'" crossorigin="anonymous" style="width:100%;height:130px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#777;margin-top:2px;">ANTES</div></div>' : '')
+          + '<div style="text-align:center;"><img src="'+e.despues+'" crossorigin="anonymous" style="width:100%;height:130px;object-fit:cover;border-radius:4px;"><div style="font-size:10.5px;color:#1E8E5A;font-weight:700;margin-top:2px;">DESPUÉS</div></div>'
+          + '</div></div>';
+      });
+      h += '</div>';
+    }
+    h += '<div class="exec-section-title">📋 Detalle por rack</div>';
+    var rows = g.rows.slice().sort(function(a,b){ return (b.culminado-a.culminado) || (b.mejoras-a.mejoras); });
+    h += '<table class="rtable"><tr><th class="hd">RACK</th><th class="hd" style="width:11%">VISITAS</th><th class="hd" style="width:13%">MEJORAS</th><th class="hd" style="width:18%">ESTADO ACTUAL</th><th class="hd" style="width:18%">GESTIÓN</th></tr>'
+      + rows.map(function(x){
+          return '<tr><td>'+esc(x.rack)+'</td><td style="text-align:center;">'+x.visitas+'</td><td style="text-align:center;">'+x.mejoras+'</td><td style="text-align:center;">'+esc(ESTADO_PLAIN[x.estado]||x.estado)+'</td><td style="text-align:center;font-weight:700;">'+(x.culminado?'Culminado':(x.corregido?'Corregido':'Atendido'))+'</td></tr>';
+        }).join("") + '</table>';
+    return h;
+  }
+
+  function buildInventarioBody(reports){
+    var matData = collectMaterialesNecesarios(reports);
+    var keys = Object.keys(matData.totals);
+    var total = keys.reduce(function(a,k){ return a + matData.totals[k]; }, 0);
+    var racks = {}; reports.forEach(function(r){ if(countMejorasChecked(r)) racks[r.control.nombreRack||"Rack sin nombre"] = 1; });
+    var h = '<div class="exec-stats-grid">'
+      + statCardHtml(keys.length, "TIPOS DE MATERIAL")
+      + statCardHtml(total, "UNIDADES GASTADAS", "var(--accent)")
+      + statCardHtml(Object.keys(racks).length, "RACKS INTERVENIDOS")
+    + '</div>';
+    h += mgmtIntro('Relación de materiales consumidos en las intervenciones de mantenimiento del período: <b>'+total+'</b> unidades en <b>'+keys.length+'</b> tipos de material, distribuidas en <b>'+Object.keys(racks).length+'</b> racks. Este reporte sirve para la reposición de inventario.');
+    h += '<div class="exec-section-title">📊 Participación por material</div>' + renderPieChart(matData.totals, null, "No se registraron materiales gastados en este período.");
+    h += '<div class="exec-section-title">📈 Cantidad gastada por material</div>' + renderCountBarChart(matData.totals, function(){ return "var(--accent)"; });
+    h += '<div class="exec-section-title">📋 Relación de materiales gastados</div>';
+    h += '<div class="exec-highlight">🏷️ <b>Marca:</b> todos los materiales son <b>Furukawa CAT</b>.</div>';
+    h += renderMaterialesTable(matData);
+    return h;
+  }
+
+  // Envío por mail (vía Apps Script, con el PDF adjunto).
+  function sendInventarioByMail(){
+    var sheetEl = $("#comparativo-sheet-wrap .sheet");
+    if(!sheetEl){ toast("Generá el informe primero"); return; }
+    var periodo = (compCurrentFrom && compCurrentTo) ? fmtDateRangeLong(compCurrentFrom, compCurrentTo) : "Histórico";
+    var subject = "Reporte de Inventario — Materiales gastados · " + periodo;
+    var bodyTxt = "Hola " + MAIL_TO_NAME.split(" ")[0] + ",\n\nAdjuntamos el reporte de inventario con la relación de materiales gastados (" + periodo + ").\nTodos los materiales son marca Furukawa CAT.\n\nSaludos,\nPNC IT / Support QSS";
+    if(!getBackendUrl()){
+      window.location.href = "mailto:"+MAIL_TO+"?cc="+encodeURIComponent(MAIL_CC)+"&subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(bodyTxt);
+      toast("Sin Apps Script configurado: se abrió tu correo (sin adjunto)");
+      return;
+    }
+    var btn = $("#btn-comp-mail"); var orig = btn.textContent;
+    btn.disabled = true; btn.textContent = "Generando PDF…";
+    buildPDF(sheetEl).then(function(doc){
+      btn.textContent = "Enviando mail…";
+      var base64 = doc.output("datauristring").split(",")[1];
+      return fetch(getBackendUrl(), { method:"POST", body:JSON.stringify({
+        action:"sendEmail", to:MAIL_TO, cc:MAIL_CC, subject:subject, body:bodyTxt,
+        filename:comparativoFilename("inventario", compCurrentFrom, compCurrentTo), pdfBase64:base64,
+        usuario:authEmail||"" }) }).then(parseBackendResponse);
+    }).then(function(json){
+      if(json && json.ok) toast("Mail enviado a "+MAIL_TO_NAME+" (CC "+MAIL_CC+") ✓");
+      else toast("No se pudo enviar: " + (json && json.error ? json.error : "actualizá el Apps Script (nueva versión)"));
+    }).catch(function(err){
+      console.error(err); toast("Error al enviar el mail: " + (err && err.message ? err.message : err));
+    }).finally(function(){ btn.disabled = false; btn.textContent = orig; });
+  }
+
   function statCardHtml(num, label, color){
     return '<div class="exec-stat-card"><div class="exec-stat-num"'+(color?' style="color:'+color+';"':'')+'>'+num+'</div><div class="exec-stat-label">'+esc(label)+'</div></div>';
   }
@@ -3774,6 +3961,10 @@
       html += '<div class="exec-section-title">📈 Detalle de estado — Burletes</div>' + renderStatusBarChart(statusCountsFromRows(rowsBu));
       html += '<div class="exec-section-title">📋 Detalle por rack</div>' + renderRackEstadoTable(rowsBu, "No hay datos cargados de burletes en este período.");
 
+    } else if(key === "inventario"){
+      html += buildInventarioBody(reports);
+    } else if(key === "gestion"){
+      html += buildGestionBody(reports);
     } else if(key === "materiales"){
       var matData = collectMaterialesNecesarios(reports);
       var matKeys = Object.keys(matData.totals);
@@ -3816,6 +4007,8 @@
       periodLabel = "Histórico — todos los relevamientos cargados";
     } else if(key === "importados"){
       periodLabel = "Todos los relevamientos importados (histórico de Word)";
+    } else if(key === "inventario" || key === "gestion"){
+      periodLabel = "Histórico — todos los relevamientos cargados";
     } else {
       periodLabel = "Histórico — informe más reciente por rack, todos los relevamientos cargados";
     }
@@ -3836,6 +4029,7 @@
       + '<button class="btn btn-outline" id="btn-comp-home2">Inicio</button>'
       + '<button class="btn btn-outline" id="btn-comp-print">🖨 Imprimir</button>'
       + (authRole === "admin" ? '<button class="btn btn-accent" id="btn-comp-save-drive">☁ Guardar en Drive</button>' : '')
+      + (key === "inventario" && authRole === "admin" ? '<button class="btn btn-accent" id="btn-comp-mail">✉ Enviar por mail</button>' : '')
     + '</div>'
     + '<div id="comparativo-sheet-wrap">' + html + '</div>';
 
@@ -3845,6 +4039,8 @@
     $("#btn-comp-print").onclick = function(){ window.print(); };
     var saveBtn = $("#btn-comp-save-drive");
     if(saveBtn) saveBtn.onclick = saveComparativoReportToDrive;
+    var mailBtn = $("#btn-comp-mail");
+    if(mailBtn) mailBtn.onclick = sendInventarioByMail;
   }
 
   function comparativoFilename(key, fromStr, toStr){

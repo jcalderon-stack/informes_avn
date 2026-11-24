@@ -137,9 +137,25 @@ function handleAction(data) {
     case "reportDelete":
       deleteReportFromDrive(data.id);
       return jsonResponse({ ok: true });
+    case "sendEmail":
+      return sendReportEmail(data);
     default:
       return jsonResponse({ ok: false, error: "Acción desconocida: " + data.action });
   }
+}
+
+/**
+ * Envía un informe por mail (PDF adjunto) con copia (CC).
+ * Requiere autorizar el permiso de Gmail/MailApp al volver a implementar.
+ */
+function sendReportEmail(data) {
+  if (!data.to) return jsonResponse({ ok: false, error: "Falta el destinatario" });
+  if (!data.pdfBase64) return jsonResponse({ ok: false, error: "Falta el PDF adjunto" });
+  var blob = Utilities.newBlob(Utilities.base64Decode(data.pdfBase64), "application/pdf", data.filename || "Informe.pdf");
+  var opts = { attachments: [blob], name: "Relevamiento de Racks · PNC IT / Support QSS" };
+  if (data.cc) opts.cc = data.cc;
+  MailApp.sendEmail(data.to, data.subject || "Informe", data.body || "Se adjunta el informe.", opts);
+  return jsonResponse({ ok: true });
 }
 
 function getDataFolder() {
